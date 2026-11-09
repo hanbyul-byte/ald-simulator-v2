@@ -1,6 +1,9 @@
-# ALD 시뮬레이터
+# 박막 공정 시뮬레이터 (ALD · CVD)
 
-TDMA-Hf 전구체 · Cross-flow 반응기 · Langmuir 포화 + 흐름 방향 전구체 소모 모델
+첫 화면에서 공정을 고르면 해당 시뮬레이터가 열린다. 주소 뒤에 `?process=ald` / `?process=cvd`를 붙이면 바로 열림.
+
+- **ALD:** TDMA-Hf 전구체 · Cross-flow 반응기 · Langmuir 포화 + 흐름 방향 전구체 소모 모델
+- **CVD:** 준비 중
 
 ```
 streamlit run app.py
@@ -10,7 +13,10 @@ streamlit run app.py
 
 | 파일 | 내용 |
 |---|---|
-| `app.py` | Streamlit 화면 |
+| `app.py` | 시작 화면 (ALD / CVD 선택) |
+| `ald_sim.py` | ALD 시뮬레이터 화면 |
+| `cvd_sim.py` | CVD 시뮬레이터 화면 (준비 중) |
+| `nav.py` | 화면 전환 도우미 |
 | `model.py` | 성장 모델 (화면과 보정 스크립트가 같이 씀) |
 | `calibrate.py` | 실측 데이터로 상수 피팅 → `calibrated.json`, `calibration.png` |
 | `data/hfox_tox_suppfig1.csv` | 논문 Supplementary Fig. 1(a)에서 읽은 HfOx 두께 315점 |
