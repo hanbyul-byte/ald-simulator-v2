@@ -92,8 +92,8 @@ def rmse(e):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="data/hfox_tox_suppfig1.csv")
-    ap.add_argument("--cycles", type=int, default=100)
-    ap.add_argument("--dose", type=float, default=0.1, help="dose 시간 [s]")
+    ap.add_argument("--cycles", type=int, default=100, help="사이클 수 (논문: 100)")
+    ap.add_argument("--dose", type=float, default=0.2, help="TDMA-Hf pulse 시간 [s] (논문: 0.2 s)")
     ap.add_argument("--pref", type=float, default=0.1,
                     help="75 °C 전구체 분압 [Torr]. s₀와 곱으로만 들어가 데이터로 정할 수 없으므로 고정")
     ap.add_argument("--sat-prec", type=float, default=60, help="이 전구체 온도 이상만 Zernike 추정에 사용 [°C]")

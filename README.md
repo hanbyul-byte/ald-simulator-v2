@@ -30,11 +30,15 @@ streamlit run app.py
 
 ```
 pip install scipy matplotlib pandas
-python calibrate.py --cv                      # 100 cycle, dose 0.1 s, P_ref 0.1 Torr 가정
-python calibrate.py --cycles 120 --dose 0.2   # 논문 본문의 실제 공정 조건으로 다시 피팅
+python calibrate.py --cv                      # 논문 조건: 100 cycle, TDMA-Hf pulse 0.2 s (P_ref 0.1 Torr 고정)
 ```
 
 데이터: 증착온도 100–250 °C(7) × 전구체온도 55–75 °C(5) × 9-point = 315점
+
+논문 공정 조건 (Lee et al., Commun. Mater. 7, 243 (2026), Methods):
+6-inch ALD (Lucida D100, NCD), 4-inch Si 웨이퍼를 Inlet 쪽에 배치, TDMA-Hf/H₂O,
+pulse/purge 0.2/20 s, 100 cycle, ~310 mTorr, Ar carrier 40 sccm.
+측정 좌표는 Inlet 쪽 (0, 0) 기준 → 앱 기하(Inlet 원점, 웨이퍼 중심 (0, 7.5))와 동일
 
 | | RMSE (nm) |
 |---|---|
@@ -45,5 +49,5 @@ python calibrate.py --cycles 120 --dose 0.2   # 논문 본문의 실제 공정 �
 식별 가능성 주의
 - `s₀ · P_ref · dose`는 곱으로만 들어감 → `P_ref`는 0.1 Torr로 고정하고 `s₀`만 피팅
 - `r`(GPC_max,0)과 사이클 수는 두께 스케일을 함께 정함 → 사이클 수를 바꾸면 `r`이 달라짐
-- 9-point 좌표는 앱 기하(Inlet 원점, 간격 1.5 cm)에 맞춤. 논문 그림의 위쪽(P1)을 Inlet에서 먼 쪽으로 봄
-  (55 °C에서 위가 얇고 아래가 두꺼움 → 아래쪽이 Inlet)
+- 9-point 좌표: 논문 그림 위쪽(P1) = (0, 10.5), 아래쪽(P9) = (0, 4.5).
+  논문 Supp. Fig. 7·8의 좌표 표기와 본문 "Inlet 근처가 두꺼움"으로 확인

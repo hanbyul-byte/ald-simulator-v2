@@ -142,7 +142,7 @@ if ss.stage == "setup":
                 f"HfOx 9-point 실측 315점(증착 100–250 °C × 전구체 55–75 °C)으로 피팅한 값 · "
                 f"RMSE {m['rmse_phys']:.2f} nm"
                 + (f" · 교차검증 {m['loco_rmse_phys']:.2f} nm" if "loco_rmse_phys" in m else "")
-                + f" · 가정: {CALIB['assumed']['cycles']} cycle, dose {CALIB['assumed']['dose_s']} s"
+                + f" · 논문 공정 조건: {CALIB['assumed']['cycles']} cycle, pulse {CALIB['assumed']['dose_s']} s"
             )
         with st.form("setup"):
             raw = {}
@@ -376,7 +376,7 @@ def wafer_figure():
                            bgcolor="rgba(255,255,255,0.9)", borderpad=2)
 
     fig.update_xaxes(range=[-5.4, 5.4], visible=False)
-    fig.update_yaxes(range=[-0.9, 12.3], visible=False, scaleanchor="x", scaleratio=1)
+    fig.update_yaxes(range=[-0.9, 13.0], visible=False, scaleanchor="x", scaleratio=1)
     fig.update_layout(height=600, margin=dict(l=10, r=10, t=10, b=10),
                       plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
     return fig
@@ -476,7 +476,7 @@ if DATA_PATH.exists():
 
     df = load_data()
     cyc0 = CALIB["assumed"]["cycles"] if CALIB else 100
-    dose0 = CALIB["assumed"]["dose_s"] if CALIB else 0.1
+    dose0 = CALIB["assumed"]["dose_s"] if CALIB else 0.2
 
     def predict_df(d_):
         return thickness(d_.T_dep_C.values + 273.15, p_vap(d_.T_prec_C.values + 273.15, c), dose0, cyc0,
@@ -485,7 +485,7 @@ if DATA_PATH.exists():
     st.divider()
     st.subheader("논문 실측 데이터와 비교")
     st.caption(f"HfOx 두께 9-point 맵 (Supplementary Fig. 1a) · 현재 상수로 예측 · "
-               f"실험 공정은 {cyc0} cycle, dose {dose0} s로 가정 · 분압은 전구체 온도에서 계산")
+               f"논문 공정 조건 {cyc0} cycle, TDMA-Hf pulse {dose0} s · 분압은 전구체 온도에서 계산")
     df = df.assign(pred=predict_df(df))
     err = df.pred - df.Tox_nm
     rm = float(np.sqrt(np.mean(err**2)))
