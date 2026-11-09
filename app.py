@@ -85,14 +85,16 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 기본 상수 = 논문 데이터로 보정한 값 (calibrated.json). 파일이 없으면 CONSTS의 v 값
+DEFAULTS = {c["id"]: (float(f"{CALIB['consts'][c['id']]:.4g}") if CALIB else c["v"]) for c in CONSTS}
+ZERN = {k: (CALIB["consts"].get(k, 0.0) if CALIB else 0.0) for k in ZKEYS}
+
 ss = st.session_state
 ss.setdefault("stage", "setup")
-ss.setdefault("consts", {c["id"]: c["v"] for c in CONSTS})
+ss.setdefault("consts", dict(DEFAULTS))
 for k, v in CTRL_DEFAULTS.items():
     ss.setdefault(k, v)
 ss.setdefault("preset", 0)
-ss.setdefault("zern", {k: 0.0 for k in ZKEYS})
-ss.setdefault("use_z", False)
 
 
 def apply_preset(i):
@@ -105,14 +107,6 @@ def apply_preset(i):
 
 def clear_preset():
     ss.preset = None
-
-
-def load_calibration():
-    """논문 데이터로 보정한 상수를 입력칸에 채움"""
-    for c in CONSTS:
-        v = CALIB["consts"][c["id"]]
-        ss[f"in_{c['id']}"] = f"{v:.4g}"
-    ss.zern = {k: CALIB["consts"].get(k, 0.0) for k in ZKEYS}
 
 
 def apply_paper_condition(td, tp):
@@ -136,10 +130,8 @@ if ss.stage == "setup":
         st.subheader("상수 입력")
         if CALIB:
             m = CALIB["metrics"]
-            b0, b1 = st.columns([1, 2.4])
-            b0.button("논문 데이터 보정값 불러오기", on_click=load_calibration, type="secondary")
-            b1.caption(
-                f"HfOx 9-point 실측 315점(증착 100–250 °C × 전구체 55–75 °C)으로 피팅한 값 · "
+            st.caption(
+                f"기본값 = HfOx 9-point 실측 315점(증착 100–250 °C × 전구체 55–75 °C)으로 피팅한 값 · "
                 f"RMSE {m['rmse_phys']:.2f} nm"
                 + (f" · 교차검증 {m['loco_rmse_phys']:.2f} nm" if "loco_rmse_phys" in m else "")
                 + f" · 논문 공정 조건: {CALIB['assumed']['cycles']} cycle, pulse {CALIB['assumed']['dose_s']} s"
@@ -153,7 +145,7 @@ if ss.stage == "setup":
                     st.markdown(f"**{grp}**")
                     for c in [c for c in CONSTS if c["g"] == grp]:
                         unit = f" [{c['unit']}]" if c["unit"] else ""
-                        ss.setdefault(f"in_{c['id']}", str(ss.consts.get(c["id"], c["v"])))
+                        ss.setdefault(f"in_{c['id']}", str(ss.consts.get(c["id"], DEFAULTS[c["id"]])))
                         raw[c["id"]] = st.text_input(
                             c["label"] + unit,
                             help=f"{c['hint']} · 허용 {c['min']} ~ {c['max']}",
@@ -164,8 +156,7 @@ if ss.stage == "setup":
             reset = b2.form_submit_button("기본값으로 되돌리기")
 
         if reset:
-            ss.consts = {c["id"]: c["v"] for c in CONSTS}
-            ss.zern = {k: 0.0 for k in ZKEYS}
+            ss.consts = dict(DEFAULTS)
             for c in CONSTS:
                 ss.pop(f"in_{c['id']}", None)
             st.rerun()
@@ -208,7 +199,8 @@ if ss.stage == "setup":
 # ---------------------------------------------------------------------------
 # 2단계: 사이드바 — 공정 조건 · 고정 상수
 # ---------------------------------------------------------------------------
-c = {**{x["id"]: x["v"] for x in CONSTS}, **ss.consts, **ss.zern}
+c = {**DEFAULTS, **ss.consts, **ZERN}
+zero_z = all(abs(ZERN[k]) < 1e-12 for k in ZKEYS)
 
 with st.sidebar:
     st.subheader("공정 조건")
@@ -231,10 +223,6 @@ with st.sidebar:
     st.caption(f"= {ss.T - 273.15:.0f} °C")
     st.slider("사이클 수", 10, 500, step=10, key="n", on_change=clear_preset)
     st.button("공정 조건 초기화", on_click=apply_preset, args=(0,))
-    zero_z = all(abs(ss.zern[k]) < 1e-12 for k in ZKEYS)
-    st.toggle("장비 패턴 보정 (저차 Zernike)", key="use_z", disabled=zero_z,
-              help="논문 데이터에서 추정한 장비 고유 두께 패턴(위쪽이 두꺼움)을 곱해 줌. "
-                   "'논문 데이터 보정값 불러오기'로 상수를 넣었을 때만 켤 수 있어요.")
 
     st.divider()
     st.subheader("두께 맵 컬러 범위")
@@ -254,8 +242,8 @@ with st.sidebar:
         "값": [x["fmt"].format(c[x["id"]]) + (f" {x['unit']}" if x["unit"] else "") for x in CONSTS],
     })
     if not zero_z:
-        st.caption("Zernike 계수 · tilt_y {:+.3f} · tilt_x {:+.3f} · defocus {:+.3f}".format(
-            *(ss.zern[k] for k in ZKEYS)))
+        st.caption("장비 패턴 보정 적용 중 (저차 Zernike) · tilt_y {:+.3f} · tilt_x {:+.3f} · "
+                   "defocus {:+.3f}".format(*(ZERN[k] for k in ZKEYS)))
     if st.button("상수 다시 입력"):
         ss.stage = "setup"
         st.rerun()
@@ -271,7 +259,7 @@ for i, (name, _) in enumerate(PRESETS):
 # 계산
 # ---------------------------------------------------------------------------
 P0, T, n = P0_now, float(ss.T), ss.n
-use_z = bool(ss.use_z) and not zero_z
+use_z = not zero_z   # 장비 패턴 보정은 항상 적용
 g_gpc, g_n = gpc_max0(c["r"])
 g_now = g_gpc * float(f_T(T, c))
 
