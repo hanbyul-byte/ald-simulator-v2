@@ -253,11 +253,15 @@ with st.sidebar:
         st.rerun()
 
 # 예시 조건 (프리셋)
-pcols = st.columns([1.2] + [1] * len(PRESETS) + [3])
+pcols = st.columns([1.2] + [1] * len(PRESETS) + [0.4, 2.6])
 pcols[0].markdown("<div style='padding-top:6px;opacity:.6;font-size:.8rem'>예시 조건</div>", unsafe_allow_html=True)
 for i, (name, _) in enumerate(PRESETS):
     pcols[i + 1].button(name, key=f"preset_{i}", on_click=apply_preset, args=(i,),
                         type="primary" if ss.preset == i else "secondary", use_container_width=True)
+# 역설계 버튼 → 팝업에서 ① 조건 입력 → ② 결과 (구현은 파일 맨 아래)
+open_inv = pcols[-1].button("🎯 역설계 · 목표 두께·균일도 → 공정 조건 추천", key="inv_open_btn",
+                            use_container_width=True)
+inv_slot = st.container()   # 적용 메시지 · (팝업을 못 쓰는 Streamlit 버전에서는) 역설계 화면이 들어갈 자리
 
 # ---------------------------------------------------------------------------
 # 계산
@@ -529,95 +533,103 @@ if DATA_PATH.exists():
             st.caption(f"이 조건 RMSE {np.sqrt(np.mean(e_ ** 2)):.2f} nm · 평균 실측 {sel.Tox_nm.mean():.2f} / "
                        f"예측 {sel.pred.mean():.2f} nm · P1 = 웨이퍼 위(Inlet에서 가장 먼 점), P9 = 아래")
 
+
+
 # ---------------------------------------------------------------------------
 # 역설계: 목표 사양 → 공정 조건 추천 (계산은 inverse.py)
+# 위쪽 '🎯 역설계' 버튼 → 팝업에서 ① 조건 입력 → ② 결과 → 'N순위 적용'으로 사이드바에 반영
 # ---------------------------------------------------------------------------
 import pandas as pd  # noqa: E402
 
 import inverse as INV  # noqa: E402
 
+INV_SIG = (tuple(sorted(c.items())), use_z)   # 상수가 바뀌면 이전 결과는 무효
+INV_STEPS = ("① 조건 입력", "② 결과")
+
 
 def apply_inverse(row):
-    """추천 조건을 사이드바 공정 조건에 적용 (격자가 슬라이더 눈금과 같아서 그대로 들어감)"""
+    """추천 조건을 사이드바 공정 조건에 적용 (탐색 격자가 슬라이더 눈금과 같아서 그대로 들어감)"""
     ss.T = int(round(row["T_K"]))
     ss.supply = "전구체 온도"
     ss.Tp = int(round(row["Tp"]))
     ss.log_t = float(round(row["log_t"], 2))
     ss.n = int(round(row["n"]))
     ss.preset = None
-    ss.inv_applied = (f"적용됨: {row['T_K']:.0f} K ({row['T_K'] - 273.15:.0f} °C) · 전구체 {row['Tp']:.0f} °C · "
-                      f"dose {row['t']:.3g} s · {row['n']:.0f} cycle → 위쪽 두께 맵에서 확인하세요.")
+    ss.inv_applied = (f"역설계 추천 적용: {row['T_K']:.0f} K ({row['T_K'] - 273.15:.0f} °C) · 전구체 {row['Tp']:.0f} °C · "
+                      f"dose {row['t']:.3g} s · {row['n']:.0f} cycle")
 
 
-st.divider()
-st.subheader("역설계 · 목표 사양 → 공정 조건 추천")
-st.caption("원하는 두께·균일도를 넣으면 현재 모델(상수 + 장비 패턴 보정)로 후보 공정 조건을 격자로 **전부** 계산해서, "
-           "조건을 만족하는 것 중 목표에 가장 좋은 조건을 추천합니다. 격자는 사이드바 눈금과 같습니다 "
-           "(웨이퍼 온도 5 K, 전구체 온도 1 °C, 사이클 10). 그래서 격자 안에서는 최적이 보장되고, 추천값을 그대로 적용할 수 있습니다.")
+def inv_back():
+    ss.inv_step = "input"
 
-with st.form("inv_form"):
-    f1, f2, f3 = st.columns(3, gap="large")
-    with f1:
-        st.markdown("**목표 사양**")
-        inv_target = st.number_input("목표 평균 두께 [nm]", 0.5, 100.0, 10.0, step=0.5)
-        inv_tol = st.number_input("허용 오차 ± [nm]", 0.01, 10.0, 0.3, step=0.1)
-        inv_numax = st.number_input("최대 불균일도 1σ [%]", 0.0, 100.0, 4.0, step=0.5)
-        inv_thmin = st.number_input("최소 포화도 θ (1 = 완전 포화)", 0.0, 1.0, 0.9, step=0.05)
-    with f2:
-        st.markdown("**평가 방식**")
-        inv_obj = st.selectbox("최적화 목표", list(INV.OBJECTIVES), format_func=INV.OBJECTIVES.get)
-        inv_region = st.selectbox("평가 영역", ["9pt", "wafer"],
-                                  format_func={"9pt": "9-point (측정 위치)", "wafer": "웨이퍼 전체 (9점 바깥은 외삽)"}.get)
-        inv_margin = st.slider("공정 마진: 공급량 변동 ± [%]", 0, 30, 10, step=5,
-                               help="전구체 공급량(dose)이 이만큼 늘거나 줄어도 조건을 계속 만족하는 후보만 추천합니다. "
-                                    "0이면 검사하지 않습니다.")
-    with f3:
-        st.markdown("**탐색 범위**")
-        inv_T = st.slider("증착 온도 [°C]", 27, 427, (100, 250))
-        inv_Tp = st.slider("전구체 온도 [°C]", 40, 95, (55, 75))
-        inv_nfree = st.checkbox("사이클 수로 두께 맞추기", value=True,
-                                help=f"끄면 사이클 수를 현재 사이드바 값({ss.n} cycle)으로 고정합니다.")
-        inv_tfree = st.checkbox("dose 시간도 조정", value=False,
-                                help="끄면 논문 공정 조건 0.2 s로 고정합니다 (실측 데이터가 있는 조건).")
-        inv_trng = st.select_slider("dose 시간 범위 [s]", options=[0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0],
-                                    value=(0.05, 1.0))
-    inv_go = st.form_submit_button("추천 조건 찾기", type="primary")
 
-inv_sig = (tuple(sorted(c.items())), use_z)
-if inv_go:
-    if inv_tfree and inv_trng[0] >= inv_trng[1]:
+def inverse_inputs():
+    """① 조건 입력. 제출하면 계산해서 ss.inv에 저장하고 True"""
+    st.caption("원하는 두께·균일도를 넣으면 현재 모델(상수 + 장비 패턴 보정)로 후보 공정 조건을 격자로 **전부** 계산해서, "
+               "조건을 만족하는 것 중 목표에 가장 좋은 조건을 추천합니다. 격자는 사이드바 눈금과 같아서"
+               "(웨이퍼 온도 5 K, 전구체 온도 1 °C, 사이클 10) 추천값을 그대로 적용할 수 있습니다.")
+    d = ss.get("inv_last", {})   # 팝업을 닫았다 열어도 마지막 입력값 유지
+    with st.form("inv_form", border=False):
+        f1, f2, f3 = st.columns(3, gap="medium")
+        with f1:
+            st.markdown("**목표 사양**")
+            st.number_input("목표 평균 두께 [nm]", 0.5, 100.0, d.get("target", 10.0), step=0.5, key="invf_target")
+            st.number_input("허용 오차 ± [nm]", 0.01, 10.0, d.get("tol", 0.3), step=0.1, key="invf_tol")
+            st.number_input("최대 불균일도 1σ [%]", 0.0, 100.0, d.get("nu_max", 4.0), step=0.5, key="invf_numax")
+            st.number_input("최소 포화도 θ (1 = 완전 포화)", 0.0, 1.0, d.get("theta_min", 0.9), step=0.05, key="invf_thmin")
+        with f2:
+            st.markdown("**평가 방식**")
+            st.selectbox("최적화 목표", list(INV.OBJECTIVES), format_func=INV.OBJECTIVES.get, key="invf_obj",
+                         index=list(INV.OBJECTIVES).index(d.get("objective", "nu")))
+            st.selectbox("평가 영역", ["9pt", "wafer"], key="invf_region", index=["9pt", "wafer"].index(d.get("region", "9pt")),
+                         format_func={"9pt": "9-point (측정 위치)", "wafer": "웨이퍼 전체 (9점 바깥은 외삽)"}.get)
+            st.slider("공정 마진: 공급량 변동 ± [%]", 0, 30, int(round(d.get("margin", 0.1) * 100)), step=5, key="invf_margin",
+                      help="전구체 공급량(dose)이 이만큼 늘거나 줄어도 조건을 계속 만족하는 후보만 추천합니다. 0이면 검사하지 않습니다.")
+        with f3:
+            st.markdown("**탐색 범위**")
+            st.slider("증착 온도 [°C]", 27, 427, tuple(d.get("T_C_rng", (100, 250))), key="invf_T")
+            st.slider("전구체 온도 [°C]", 40, 95, tuple(d.get("Tp_rng", (55, 75))), key="invf_Tp")
+            st.checkbox("사이클 수로 두께 맞추기", value=d.get("n_free", True), key="invf_nfree",
+                        help=f"끄면 사이클 수를 현재 사이드바 값({ss.n} cycle)으로 고정합니다.")
+            st.checkbox("dose 시간도 조정", value=d.get("t_free", False), key="invf_tfree",
+                        help="끄면 논문 공정 조건 0.2 s로 고정합니다 (실측 데이터가 있는 조건).")
+            st.select_slider("dose 시간 범위 [s]", options=[0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0],
+                             value=tuple(d.get("t_rng", (0.05, 1.0))), key="invf_trng")
+        go_ = st.form_submit_button("추천 조건 찾기 →", type="primary", use_container_width=True)
+    if not go_:
+        return False
+    if ss.invf_tfree and ss.invf_trng[0] >= ss.invf_trng[1]:
         st.error("dose 시간 범위의 최솟값이 최댓값보다 작아야 해요.")
-    else:
-        opts = dict(target=inv_target, tol=inv_tol, nu_max=inv_numax, theta_min=inv_thmin, objective=inv_obj,
-                    region=inv_region, T_C_rng=inv_T, Tp_rng=inv_Tp, t_fixed=0.2, t_free=inv_tfree, t_rng=inv_trng,
-                    n_fixed=ss.n, n_free=inv_nfree, margin=inv_margin / 100)
-        with st.spinner("후보 조건 계산 중…"):
-            ss.inv = {"res": INV.search(c, use_z, **opts), "opts": opts, "sig": inv_sig}
-        ss.pop("inv_applied", None)
+        return False
+    opts = dict(target=ss.invf_target, tol=ss.invf_tol, nu_max=ss.invf_numax, theta_min=ss.invf_thmin,
+                objective=ss.invf_obj, region=ss.invf_region, T_C_rng=ss.invf_T, Tp_rng=ss.invf_Tp,
+                t_fixed=0.2, t_free=ss.invf_tfree, t_rng=ss.invf_trng, n_fixed=ss.n, n_free=ss.invf_nfree,
+                margin=ss.invf_margin / 100)
+    with st.spinner("후보 조건 계산 중…"):
+        ss.inv = {"res": INV.search(c, use_z, **opts), "opts": opts, "sig": INV_SIG}
+    ss.inv_last = opts
+    return True
 
-INVR = ss.get("inv")
-if INVR and INVR["sig"] != inv_sig:
-    st.info("상수가 바뀌었습니다. '추천 조건 찾기'를 다시 눌러 주세요.")
-    INVR = None
-if ss.get("inv_applied"):
-    st.success(ss.inv_applied)
 
-if INVR:
-    R, o = INVR["res"], INVR["opts"]
+def inverse_results():
+    """② 결과: 추천 표 + 적용 버튼 + 그래프 + 주의할 점"""
+    R, o = ss.inv["res"], ss.inv["opts"]
     allv, top = R["all"], R["top"]
     sat = allv[allv.thmin > 0.995]
     sat_floor = float(sat.nu.min()) if len(sat) else float("nan")
     mtxt = f"공급량 ±{o['margin'] * 100:.0f} % 변동 포함" if o["margin"] > 0 else "공정 마진 검사 없음"
+    st.caption(f"목표 {o['target']:g} ± {o['tol']:g} nm · 불균일도 ≤ {o['nu_max']:g} % · θ ≥ {o['theta_min']:g} · "
+               f"{INV.OBJECTIVES[o['objective']]} · {mtxt}")
     if R["status"] == "ok":
-        st.success(f"후보 {R['n_cand']:,}개 × 평가 지점 {R['n_points']}개 계산 · {R['n_feas']:,}개가 조건 만족 ({mtxt})")
+        st.success(f"후보 {R['n_cand']:,}개 × 평가 지점 {R['n_points']}개 계산 · {R['n_feas']:,}개가 조건 만족")
     else:
         tips = []
         if np.isfinite(sat_floor) and o["nu_max"] < sat_floor:
-            tips.append(f"이 모델에서 완전 포화 영역의 불균일도는 약 {sat_floor:.1f} %입니다 (장비 패턴 보정에서 옴). "
-                        f"최대 불균일도를 그 이상으로 올리거나 공정 마진을 줄여 보세요.")
+            tips.append(f"이 모델에서 완전 포화 영역의 불균일도는 약 {sat_floor:.1f} %입니다(장비 패턴 보정에서 옴). "
+                        "최대 불균일도를 그 이상으로 올리거나 공정 마진을 줄여 보세요.")
         if not o["n_free"]:
             tips.append("두께가 문제라면 '사이클 수로 두께 맞추기'를 켜 보세요.")
-        st.error(f"조건을 모두 만족하는 후보가 없습니다 ({R['n_cand']:,}개 계산, {mtxt}). "
+        st.error(f"조건을 모두 만족하는 후보가 없습니다 ({R['n_cand']:,}개 계산). "
                  "아래는 제약 위반이 가장 작은 절충안입니다. " + " ".join(tips))
 
     show = pd.DataFrame({
@@ -634,76 +646,123 @@ if INVR:
                  hide_index=True, use_container_width=True)
     bcols = st.columns(max(len(top), 1))
     for i, (bc, (_, row)) in enumerate(zip(bcols, top.iterrows())):
-        bc.button(f"{i + 1}순위 적용", key=f"inv_apply_{i}", on_click=apply_inverse, args=(row.to_dict(),),
-                  use_container_width=True)
+        if bc.button(f"{i + 1}순위 적용", key=f"inv_apply_{i}", type="primary" if i == 0 else "secondary",
+                     use_container_width=True):
+            apply_inverse(row.to_dict())
+            ss.inv_open = False
+            st.rerun()          # 전체 화면을 다시 그림 → 팝업이 닫히고 사이드바·두께 맵에 반영
     st.caption("전구체 사용량 = 분압(전구체 온도) × dose 시간 × 사이클, 논문 조건(75 °C · 0.2 s · 100 cycle) = 1. "
                "'변동 시 최악'은 공급량이 ±마진만큼 변했을 때 가장 나쁜 불균일도입니다.")
 
-    g1, g2 = st.columns(2, gap="medium")
-    with g1:
-        with st.container(border=True):
-            st.markdown("##### 균일도 vs 전구체 사용량")
-            thk = allv[allv.ok_thk & allv.ok_th]
-            cloud = thk.iloc[:: max(1, len(thk) // 3000)]
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=cloud.usage, y=cloud.nu_worst, mode="markers", name="후보",
-                                     marker=dict(color="#c3c8cf", size=5), hoverinfo="skip"))
-            fig.add_trace(go.Scatter(x=R["pareto"].usage, y=R["pareto"].nu_worst, mode="lines+markers",
-                                     name="Pareto 최적", line=dict(color=ACCENT, width=2), marker=dict(size=6)))
-            fig.add_trace(go.Scatter(x=top.usage, y=top.nu_worst, mode="markers+text", name="추천",
-                                     text=[str(i + 1) for i in range(len(top))], textposition="top center",
-                                     marker=dict(color=S2, size=11)))
-            fig.add_hline(y=o["nu_max"], line=dict(color="#c23b3a", dash="dash", width=1.2),
-                          annotation_text="불균일도 상한", annotation_position="top left")
-            fig.update_xaxes(title="전구체 사용량 (논문 조건 = 1, 로그 축)", type="log")
-            fig.update_yaxes(title="불균일도 1σ, 변동 시 최악 [%]", rangemode="tozero")
-            fig.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10),
-                              legend=dict(orientation="h", y=1.1, x=0))
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("두께·포화도 조건을 만족하는 후보(회색)와 Pareto 최적선. 왼쪽 아래로 갈수록 좋습니다.")
-    with g2:
-        with st.container(border=True):
-            TKs, Tps, LTs = R["axes"]
-            li = int(np.argmin(np.abs(LTs - (top.log_t.iloc[0] if len(top) else LTs[0]))))
-            st.markdown(f"##### 가능 영역 · dose {10 ** LTs[li]:.3g} s")
-            cube = lambda col: allv[col].to_numpy().reshape(len(TKs), len(Tps), len(LTs))[:, :, li].T  # noqa: E731
-            nu_g, ok_g = cube("nu_worst"), cube("feasible").astype(bool)
-            zmax = max(o["nu_max"] * 2, (sat_floor if np.isfinite(sat_floor) else 0) + 1)
-            fig = go.Figure()
-            fig.add_trace(go.Heatmap(x=TKs - 273.15, y=Tps, z=nu_g, zmin=0, zmax=zmax,
-                                     colorscale=[[0, "#1e40ff"], [0.3, "#22c55e"], [0.55, "#ffff00"],
-                                                 [0.8, "#ff8c00"], [1, "#d7191c"]],
-                                     colorbar=dict(title="1σ %", thickness=12, len=0.7),
-                                     hovertemplate="증착 %{x:.0f} °C · 전구체 %{y} °C<br>불균일도(최악) %{z:.2f} %<extra></extra>"))
-            fig.add_trace(go.Heatmap(x=TKs - 273.15, y=Tps, z=np.where(ok_g, np.nan, 1.0), showscale=False,
-                                     hoverinfo="skip", colorscale=[[0, "rgba(120,124,130,0.68)"], [1, "rgba(120,124,130,0.68)"]]))
-            if DATA_PATH.exists():
-                mc = pd.read_csv(DATA_PATH)[["T_dep_C", "T_prec_C"]].drop_duplicates()
-                fig.add_trace(go.Scatter(x=mc.T_dep_C, y=mc.T_prec_C, mode="markers", name="실측 조건",
-                                         marker=dict(color="black", size=5)))
-            on = np.abs(top.log_t.to_numpy() - LTs[li]) < 1e-9 if len(top) else np.zeros(0, bool)
-            fig.add_trace(go.Scatter(x=top.T_K[on] - 273.15, y=top.Tp[on], mode="markers+text", name="추천",
-                                     text=[str(i + 1) for i in np.flatnonzero(on)], textfont=dict(size=11, color="#141820"),
-                                     marker=dict(color="white", size=17, line=dict(color=S2, width=2))))
-            fig.update_xaxes(title="증착 온도 [°C]")
-            fig.update_yaxes(title="전구체 온도 [°C]")
-            fig.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10),
-                              legend=dict(orientation="h", y=1.1, x=0))
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("색 = 불균일도(공급량 변동 시 최악), 회색 = 조건 불만족, 검은 점 = 논문 실측 조건, 숫자 = 추천 순위")
+    tab1, tab2, tab3 = st.tabs(["균일도 vs 전구체 사용량", "가능 영역", "해석할 때 주의할 점"])
+    with tab1:
+        thk = allv[allv.ok_thk & allv.ok_th]
+        cloud = thk.iloc[:: max(1, len(thk) // 3000)]
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=cloud.usage, y=cloud.nu_worst, mode="markers", name="후보",
+                                 marker=dict(color="#c3c8cf", size=5), hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=R["pareto"].usage, y=R["pareto"].nu_worst, mode="lines+markers",
+                                 name="Pareto 최적", line=dict(color=ACCENT, width=2), marker=dict(size=6)))
+        fig.add_trace(go.Scatter(x=top.usage, y=top.nu_worst, mode="markers+text", name="추천",
+                                 text=[str(i + 1) for i in range(len(top))], textposition="top center",
+                                 marker=dict(color=S2, size=11)))
+        fig.add_hline(y=o["nu_max"], line=dict(color="#c23b3a", dash="dash", width=1.2),
+                      annotation_text="불균일도 상한", annotation_position="top left")
+        fig.update_xaxes(title="전구체 사용량 (논문 조건 = 1, 로그 축)", type="log")
+        fig.update_yaxes(title="불균일도 1σ, 변동 시 최악 [%]", rangemode="tozero")
+        fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.1, x=0))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("두께·포화도 조건을 만족하는 후보(회색)와 Pareto 최적선. 왼쪽 아래로 갈수록 좋습니다.")
+    with tab2:
+        TKs, Tps, LTs = R["axes"]
+        li = int(np.argmin(np.abs(LTs - (top.log_t.iloc[0] if len(top) else LTs[0]))))
+        cube = lambda col: allv[col].to_numpy().reshape(len(TKs), len(Tps), len(LTs))[:, :, li].T  # noqa: E731
+        nu_g, ok_g = cube("nu_worst"), cube("feasible").astype(bool)
+        zmax = max(o["nu_max"] * 2, (sat_floor if np.isfinite(sat_floor) else 0) + 1)
+        fig = go.Figure()
+        fig.add_trace(go.Heatmap(x=TKs - 273.15, y=Tps, z=nu_g, zmin=0, zmax=zmax,
+                                 colorscale=[[0, "#1e40ff"], [0.3, "#22c55e"], [0.55, "#ffff00"],
+                                             [0.8, "#ff8c00"], [1, "#d7191c"]],
+                                 colorbar=dict(title="1σ %", thickness=12, len=0.7),
+                                 hovertemplate="증착 %{x:.0f} °C · 전구체 %{y} °C<br>불균일도(최악) %{z:.2f} %<extra></extra>"))
+        fig.add_trace(go.Heatmap(x=TKs - 273.15, y=Tps, z=np.where(ok_g, np.nan, 1.0), showscale=False,
+                                 hoverinfo="skip", colorscale=[[0, "rgba(120,124,130,0.68)"], [1, "rgba(120,124,130,0.68)"]]))
+        if DATA_PATH.exists():
+            mc = pd.read_csv(DATA_PATH)[["T_dep_C", "T_prec_C"]].drop_duplicates()
+            fig.add_trace(go.Scatter(x=mc.T_dep_C, y=mc.T_prec_C, mode="markers", name="실측 조건",
+                                     marker=dict(color="black", size=5)))
+        on = np.abs(top.log_t.to_numpy() - LTs[li]) < 1e-9 if len(top) else np.zeros(0, bool)
+        fig.add_trace(go.Scatter(x=top.T_K[on] - 273.15, y=top.Tp[on], mode="markers+text", name="추천",
+                                 text=[str(i + 1) for i in np.flatnonzero(on)], textfont=dict(size=11, color="#141820"),
+                                 marker=dict(color="white", size=17, line=dict(color=S2, width=2))))
+        fig.update_xaxes(title="증착 온도 [°C]")
+        fig.update_yaxes(title="전구체 온도 [°C]")
+        fig.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.1, x=0))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"dose {10 ** LTs[li]:.3g} s 단면 · 색 = 불균일도(공급량 변동 시 최악), 회색 = 조건 불만족, "
+                   "검은 점 = 논문 실측 조건, 숫자 = 추천 순위")
+    with tab3:
+        loco = CALIB["metrics"].get("loco_rmse_zernike" if use_z else "loco_rmse_phys") if CALIB else None
+        notes = [
+            "추천은 **모델 예측**입니다." + (f" 조건 1개씩 뺀 교차검증에서 모델 예측 오차는 약 {loco:.2f} nm였으므로, "
+                                         "이보다 작은 차이로 갈리는 추천끼리는 실제로 구분되지 않을 수 있습니다." if loco else ""),
+            (f"완전 포화 영역(θ > 0.995)의 최소 불균일도는 약 {sat_floor:.1f} %입니다. 이는 장비 패턴 보정(Zernike tilt)에서 나옵니다. "
+             "이보다 낮은 불균일도는 포화 직전 조건에서 전구체 고갈(먼 쪽이 얇아짐)과 장비 패턴(먼 쪽이 두꺼워짐)이 상쇄될 때만 "
+             "나오는데, 이런 조건은 공급량이 조금만 변해도 깨집니다. 공정 마진 검사가 이런 조건을 걸러냅니다."
+             if np.isfinite(sat_floor) and use_z else
+             "장비 패턴 보정이 꺼져 있으면 포화 영역의 예측 불균일도가 0에 가까워집니다. 실제 장비 편차는 반영되지 않습니다."),
+            "모델에서 전구체 온도와 dose 시간은 노출량(분압 × 시간)으로만 작용해서 서로 대체할 수 있습니다. "
+            "전구체 온도 → 분압 환산은 피팅된 ΔH_vap에 기반합니다.",
+            "사이클 수는 두께 ∝ 사이클로 맞춥니다(모델 정의). 핵생성 지연은 반영하지 않으며, 실측은 100 cycle 조건뿐입니다.",
+            ("평가 영역이 9-point라 웨이퍼 가장자리(9점 바깥)는 반영되지 않습니다." if o["region"] == "9pt" else
+             "웨이퍼 전체 평가는 9점 바깥까지 모델과 장비 패턴 보정(정규화 반경 3 cm)을 외삽한 결과입니다."),
+        ]
+        st.markdown("\n".join(f"- {t}" for t in notes))
 
-    loco = CALIB["metrics"].get("loco_rmse_zernike" if use_z else "loco_rmse_phys") if CALIB else None
-    notes = [
-        "추천은 **모델 예측**입니다." + (f" 조건 1개씩 뺀 교차검증에서 모델 예측 오차는 약 {loco:.2f} nm였으므로, "
-                                     "이보다 작은 차이로 갈리는 추천끼리는 실제로 구분되지 않을 수 있습니다." if loco else ""),
-        (f"완전 포화 영역(θ > 0.995)의 최소 불균일도는 약 {sat_floor:.1f} %입니다. 이는 장비 패턴 보정(Zernike tilt)에서 나옵니다. "
-         "이보다 낮은 불균일도는 포화 직전 조건에서 전구체 고갈(먼 쪽이 얇아짐)과 장비 패턴(먼 쪽이 두꺼워짐)이 상쇄될 때만 나오는데, "
-         "이런 조건은 공급량이 조금만 변해도 깨집니다. 공정 마진 검사가 이런 조건을 걸러냅니다." if np.isfinite(sat_floor) and use_z else
-         "장비 패턴 보정이 꺼져 있으면 포화 영역의 예측 불균일도가 0에 가까워집니다. 실제 장비 편차는 반영되지 않습니다."),
-        "모델에서 전구체 온도와 dose 시간은 노출량(분압 × 시간)으로만 작용해서 서로 대체할 수 있습니다. "
-        "전구체 온도 → 분압 환산은 피팅된 ΔH_vap에 기반합니다.",
-        "사이클 수는 두께 ∝ 사이클로 맞춥니다(모델 정의). 핵생성 지연은 반영하지 않으며, 실측은 100 cycle 조건뿐입니다.",
-        ("평가 영역이 9-point라 웨이퍼 가장자리(9점 바깥)는 반영되지 않습니다." if o["region"] == "9pt" else
-         "웨이퍼 전체 평가는 9점 바깥까지 모델과 장비 패턴 보정(정규화 반경 3 cm)을 외삽한 결과입니다."),
-    ]
-    st.markdown("**해석할 때 주의할 점**\n" + "\n".join(f"- {t}" for t in notes))
+
+def inverse_flow():
+    """① 조건 입력 → ② 결과 (팝업 안 또는 화면 위쪽 패널에서 공통으로 사용)"""
+    if ss.get("inv") and ss.inv["sig"] != INV_SIG:     # 상수가 바뀌면 처음부터
+        ss.pop("inv")
+        ss.inv_step = "input"
+    step = ss.get("inv_step", "input") if ss.get("inv") else "input"
+    head = st.empty()
+    if step == "input":
+        body = st.empty()
+        with body.container():
+            done = inverse_inputs()
+        if done:
+            body.empty()                  # 입력 폼을 지우고 같은 자리에 결과 표시
+            step = ss.inv_step = "result"
+    if step == "result":
+        cb, _ = st.columns([1, 3])
+        cb.button("← 조건 다시 입력", on_click=inv_back, use_container_width=True)
+        inverse_results()
+    head.markdown(" → ".join(f"**{s}**" if i == INV_STEPS.index("② 결과" if step == "result" else "① 조건 입력")
+                             else f"<span style='opacity:.45'>{s}</span>" for i, s in enumerate(INV_STEPS)),
+                  unsafe_allow_html=True)
+
+
+# 팝업(st.dialog)으로 띄우기. 팝업이 없는 옛 Streamlit이면 위쪽 패널로 펼침
+_dialog = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+if _dialog is not None:
+    @_dialog("🎯 역설계 · 목표 사양 → 공정 조건 추천", width="large")
+    def inverse_dialog():
+        inverse_flow()
+
+    if open_inv:
+        inverse_dialog()
+else:
+    if open_inv:
+        ss.inv_open = not ss.get("inv_open", False)
+    if ss.get("inv_open"):
+        with inv_slot:
+            with st.container(border=True):
+                hc1, hc2 = st.columns([5, 1])
+                hc1.markdown("#### 🎯 역설계 · 목표 사양 → 공정 조건 추천")
+                hc2.button("닫기", key="inv_close", on_click=lambda: ss.update(inv_open=False), use_container_width=True)
+                inverse_flow()
+
+if ss.get("inv_applied"):
+    with inv_slot:
+        st.success(ss.pop("inv_applied") + " · 사이드바와 두께 맵에 반영됐습니다. 🎯 역설계 버튼을 다시 누르면 결과를 다시 볼 수 있어요.")

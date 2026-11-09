@@ -18,7 +18,7 @@ streamlit run app.py
 | `cvd_sim.py` | CVD 시뮬레이터 화면 (준비 중) |
 | `nav.py` | 화면 전환 도우미 |
 | `model.py` | 성장 모델 (화면과 보정 스크립트가 같이 씀) |
-| `inverse.py` | 역설계: 목표 사양 → 공정 조건 추천 (ALD 화면 맨 아래 섹션에서 사용) |
+| `inverse.py` | 역설계: 목표 사양 → 공정 조건 추천 (ALD 화면 위쪽 🎯 역설계 버튼 → 팝업에서 조건 입력 → 결과) |
 | `calibrate.py` | 실측 데이터로 상수 피팅 → `calibrated.json`, `calibration.png` |
 | `data/hfox_tox_suppfig1.csv` | 논문 Supplementary Fig. 1(a)에서 읽은 HfOx 두께 315점 |
 
