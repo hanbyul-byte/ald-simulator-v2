@@ -37,27 +37,10 @@ if ss.process in PAGES:
 # 공정 선택 화면
 # ---------------------------------------------------------------------------
 st.title("박막 공정 시뮬레이터")
-st.caption("시뮬레이션할 증착 공정을 고르세요.")
 
 CARDS = [
-    dict(
-        key="ald",
-        name="ALD",
-        full="Atomic Layer Deposition · 원자층 증착",
-        lines=[
-            "TDMA-Hf / H₂O · HfOx · Cross-flow 반응기",
-            "Langmuir 포화 + 흐름 방향 전구체 소모 모델",
-            "논문 실측 315점으로 상수 보정 (RMSE 0.95 nm)",
-        ],
-        ready=True,
-    ),
-    dict(
-        key="cvd",
-        name="CVD",
-        full="Chemical Vapor Deposition · 화학 기상 증착",
-        lines=["준비 중"],
-        ready=False,
-    ),
+    dict(key="ald", name="ALD", ready=True),
+    dict(key="cvd", name="CVD", ready=False),
 ]
 
 cols = st.columns(len(CARDS), gap="large")
@@ -65,9 +48,6 @@ for col, card in zip(cols, CARDS):
     with col:
         with st.container(border=True):
             st.subheader(card["name"])
-            st.caption(card["full"])
-            for line in card["lines"]:
-                st.markdown(f"- {line}")
             st.button(
                 f"{card['name']} 시뮬레이터 열기" + ("" if card["ready"] else " (준비 중)"),
                 key=f"open_{card['key']}",
