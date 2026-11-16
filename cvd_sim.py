@@ -32,6 +32,7 @@ S2 = "#eb6834"
 REF = "#868d98"
 THK_RAMP = ["#d7191c", "#ff8c00", "#ffff00", "#22c55e", "#00e5ff", "#1e40ff", "#0000c8"]
 COLORSCALE = [[i / (len(THK_RAMP) - 1), c] for i, c in enumerate(THK_RAMP)]
+N_DIAM = 18   # 두께 평가 점 수: 웨이퍼 직경 방향 −R_w ~ +R_w 등간격 (PVD 페이지와 같은 방식)
 
 # ---------------------------------------------------------------------------
 # 상수 정의
@@ -276,7 +277,9 @@ def thk_xy(x, y):
     return RAD.thickness_map(t_center, x, y, M.WC, M.WR, RP)
 
 
-pts_xy = np.array(M.PTS, dtype=float)
+# 평가 지점: 웨이퍼 중심을 지나는 직경 위 등간격 18점 (N(r)이 축대칭이라 방향은 상관없음)
+pts_pos = np.linspace(-M.WR, M.WR, N_DIAM)                         # 웨이퍼 중심 기준 위치 [cm]
+pts_xy = np.column_stack([M.WC[0] + pts_pos, np.full(N_DIAM, M.WC[1])])
 pts_r = RAD.r_paper(pts_xy[:, 0], pts_xy[:, 1], M.WC, M.WR, RP)   # 논문 웨이퍼 반경 [mm]
 pts_v = thk_xy(pts_xy[:, 0], pts_xy[:, 1])
 mean = float(pts_v.mean())
@@ -301,8 +304,8 @@ else:
 # KPI
 # ---------------------------------------------------------------------------
 k = st.columns(6)
-k[0].metric("평균 두께", f"{sig(mean)} nm")
-k[1].metric("불균일도 1σ", f"{nu_s:.1f} %")
+k[0].metric("평균 두께", f"{sig(mean)} nm", help=f"직경 {N_DIAM}점 평균")
+k[1].metric("불균일도 1σ", f"{nu_s:.1f} %", help=f"직경 방향 등간격 {N_DIAM}점의 σ / 평균 × 100")
 k[2].metric("불균일도 (max−min)/2·mean", f"±{nu_r:.1f} %")
 k[3].metric("평균 증착률", f"{sig(mean / t_min)} nm/min")
 k[4].metric("k_s / h_g (웨이퍼 중심)", f"{reg:.3g}")
@@ -348,14 +351,15 @@ def wafer_figure():
                   line=dict(color="#4a525e", width=1.5))
     fig.add_trace(go.Scatter(
         x=pts_xy[:, 0], y=pts_xy[:, 1], mode="markers",
-        marker=dict(size=9, color="white", line=dict(color="#141820", width=1.5)),
-        customdata=np.stack([np.arange(1, 10), pts_r, pts_v], -1),
+        marker=dict(size=7, color="white", line=dict(color="#141820", width=1.2)),
+        customdata=np.stack([np.arange(1, N_DIAM + 1), pts_r, pts_v], -1),
         hovertemplate="Point %{customdata[0]:.0f} · 논문 반경 %{customdata[1]:.1f} mm<br>"
                       "두께 <b>%{customdata[2]:.2f}</b> nm<extra></extra>",
         showlegend=False))
-    for (px, py), v in zip(pts_xy, pts_v):
-        fig.add_annotation(x=px, y=py, text=sig(v), showarrow=False, yshift=16,
-                           font=dict(family="ui-monospace, Menlo, monospace", size=12, color="#141820"),
+    # 점마다 두께 값 표시 — 18점이 촘촘해서 위·아래로 번갈아 놓는다
+    for i, ((px, py), v) in enumerate(zip(pts_xy, pts_v)):
+        fig.add_annotation(x=px, y=py, text=sig(v), showarrow=False, yshift=18 if i % 2 == 0 else -18,
+                           font=dict(family="ui-monospace, Menlo, monospace", size=11, color="#141820"),
                            bgcolor="rgba(255,255,255,0.9)", borderpad=2)
     fig.update_xaxes(range=[-5.4, 5.4], visible=False)
     fig.update_yaxes(range=[M.WC[1] - 5.4, M.WC[1] + 5.4], visible=False, scaleanchor="x", scaleratio=1)
@@ -418,13 +422,13 @@ left, right = st.columns([1.05, 1], gap="medium")
 with left:
     with st.container(border=True):
         h1, h2 = st.columns([1, 1.3])
-        h1.markdown("##### 두께 맵 · 9-Point")
+        h1.markdown(f"##### 두께 맵 · 직경 {N_DIAM}점")
         getattr(h2, regime_kind)(regime_txt)
         st.plotly_chart(wafer_figure(), use_container_width=True)
         st.caption(f"두께 [nm] · 컬러 범위 {sig(max(c_lo, 0))} ~ {sig(c_hi)} nm")
-        with st.expander("9-Point 값 표"):
+        with st.expander(f"직경 {N_DIAM}점 값 표"):
             st.dataframe({
-                "Point": list(range(1, 10)), "x [cm]": pts_xy[:, 0], "y [cm]": pts_xy[:, 1],
+                "Point": list(range(1, N_DIAM + 1)), "위치 x [cm]": np.round(pts_pos, 3),
                 "논문 반경 [mm]": np.round(pts_r, 1),
                 "N(r)": np.round(RAD.norm_dr(pts_r, RP), 5),
                 "ΔT [K]": np.round(RAD.delta_T(pts_r, RP), 3),
