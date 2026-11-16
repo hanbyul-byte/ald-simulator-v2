@@ -6,7 +6,7 @@
 화면 구성
 - 공정 선택 화면: ALD / CVD 중 하나를 고름
 - ALD → ald_sim.py  (TDMA-Hf · Langmuir 포화 + 전구체 소모 모델, 논문 데이터 보정)
-- CVD → cvd_sim.py  (준비 중)
+- CVD → cvd_sim.py  (경계층 물질 전달 + 아레니우스 표면 반응 + 전구체 고갈 모델)
 주소 뒤에 ?process=ald 또는 ?process=cvd 를 붙이면 해당 시뮬레이터로 바로 열림
 """
 import runpy
@@ -40,7 +40,7 @@ st.title("박막 공정 시뮬레이터")
 
 CARDS = [
     dict(key="ald", name="ALD", ready=True),
-    dict(key="cvd", name="CVD", ready=False),
+    dict(key="cvd", name="CVD", ready=True),
 ]
 
 cols = st.columns(len(CARDS), gap="large")
