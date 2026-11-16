@@ -5,7 +5,7 @@
 - **ALD:** TDMA-Hf 전구체 · Cross-flow 반응기 · Langmuir 포화 + 흐름 방향 전구체 소모 모델
 - **CVD:** 회전 서셉터 · 중심 두께 = 평판 경계층 물질 전달 + 아레니우스 표면 반응(직렬 저항) + 전구체 고갈
   - 두께 맵: 웨이퍼 중심 두께는 위 물리 모델로, 반경 분포는 논문(APCVD, 300 mm, 회전 서셉터) Fig. 2로 최적화한 N(r)로 계산
-- **PVD:** 준비 중 (물리 모델·데이터 추가 예정)
+- **PVD:** 평면 원형 타깃 마그네트론 스퍼터링 · 코사인 방출 + 거리 감소 + Ar 충돌 감쇠 → 중심 기준 상대 두께 (모델: `pvd_model.py`, 화면은 준비 중)
 
 ```
 streamlit run app.py
@@ -22,7 +22,9 @@ streamlit run app.py
 | `calibrate_cvd.py` | CVD 실측 데이터로 상수 피팅 → `cvd_calibrated.json`, `cvd_calibration.png` |
 | `cvd_radial.py` | CVD 반경 프로파일 모델 N(r) (논문 Habuka 반응식 + 웨이퍼 온도 분포 + 가장자리 TCS 저하) |
 | `fit_cvd_radial.py` | 논문 Fig. 2로 N(r) 최적화 → `cvd_radial.json`, `cvd_radial_fit.png` |
-| `pvd_sim.py` | PVD 시뮬레이터 화면 (준비 중: 물리 모델·데이터 추가 예정) |
+| `pvd_sim.py` | PVD 시뮬레이터 화면 (준비 중) |
+| `pvd_model.py` | PVD 두께 분포 모델 (평면 타깃 d = 0 · F(r) 적분 · 상대 두께 · 웨이퍼맵 · 불균일도) |
+| `pvd_fig2a.py` | PVD 모델 검산(scipy 적분 비교) + 논문 Fig. 2(a) 조건 계산 → `pvd_fig2a.png`, `pvd_fig2a.csv` |
 | `data/cvd_fig2_norm_dr.csv` | 논문 Fig. 2 디지타이즈 (실험 · 논문 COMSOL 정규화 증착률, 177점) |
 | `nav.py` | 화면 전환 도우미 |
 | `model.py` | 성장 모델 (화면과 보정 스크립트가 같이 씀) |
