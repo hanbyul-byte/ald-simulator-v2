@@ -3,8 +3,8 @@
 첫 화면에서 공정을 고르면 해당 시뮬레이터가 열린다. 주소 뒤에 `?process=ald` / `?process=cvd`를 붙이면 바로 열림.
 
 - **ALD:** TDMA-Hf 전구체 · Cross-flow 반응기 · Langmuir 포화 + 흐름 방향 전구체 소모 모델
-- **CVD:** Cross-flow 반응기 · 평판 경계층 물질 전달 + 아레니우스 표면 반응(직렬 저항) + 흐름 방향 전구체 고갈
-  - 반경 프로파일 모드(기본): 웨이퍼 중심 두께는 위 물리 모델로, 반경 분포는 논문(APCVD, 300 mm, 회전 서셉터) Fig. 2로 최적화한 N(r)로 계산
+- **CVD:** 회전 서셉터 · 중심 두께 = 평판 경계층 물질 전달 + 아레니우스 표면 반응(직렬 저항) + 전구체 고갈
+  - 두께 맵: 웨이퍼 중심 두께는 위 물리 모델로, 반경 분포는 논문(APCVD, 300 mm, 회전 서셉터) Fig. 2로 최적화한 N(r)로 계산
 
 ```
 streamlit run app.py
@@ -16,7 +16,7 @@ streamlit run app.py
 |---|---|
 | `app.py` | 시작 화면 (ALD / CVD 선택) |
 | `ald_sim.py` | ALD 시뮬레이터 화면 |
-| `cvd_sim.py` | CVD 시뮬레이터 화면 |
+| `cvd_sim.py` | CVD 시뮬레이터 화면 (회전 서셉터 · 반경 프로파일) |
 | `cvd_model.py` | CVD 성장 모델 (화면과 `calibrate_cvd.py`가 같이 씀) |
 | `calibrate_cvd.py` | CVD 실측 데이터로 상수 피팅 → `cvd_calibrated.json`, `cvd_calibration.png` |
 | `cvd_radial.py` | CVD 반경 프로파일 모델 N(r) (논문 Habuka 반응식 + 웨이퍼 온도 분포 + 가장자리 TCS 저하) |
@@ -97,7 +97,7 @@ pulse/purge 0.2/20 s, 100 cycle, ~310 mTorr, Ar carrier 40 sccm.
 - 평판 경계층 식은 `δ < H`에서 성립 → 넘으면 화면에 경고
 - 기본 상수는 보정 전 초깃값(상압 CVD, HfO₂ 막). `cvd_calibrated.json`이 있으면 그 값을 기본으로 씀
 
-화면: 두께 맵 · 율속 단계 판정(`k_s/h_g`) · 아레니우스 플롯(반응/물질 전달 한계선 포함) · 흐름 방향 증착률·농도 프로파일 ·
+화면: 두께 맵(중심 두께 × 반경 프로파일 N(r)) · 율속 단계 판정(`k_s/h_g`) · 아레니우스 플롯(웨이퍼 중심, 반응/물질 전달 한계선 포함) · 반경 프로파일(N(r) · ΔT(r)) ·
 `data/cvd_data.csv`가 있으면 실측 비교
 
 ## CVD 반경 프로파일 최적화 (cvd_radial.py · fit_cvd_radial.py)
