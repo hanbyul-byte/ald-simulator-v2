@@ -12,9 +12,11 @@ PVD 두께 분포 모델 (Streamlit 의존성 없음 → pvd_sim.py와 스크립
 모델 식 (번호 = "PVD 평면 타깃 물리식 정리" 문서의 절 번호)
   02) 이동 거리      L(r, q, φ) = √(H² + r² + q² − 2·r·q·cos φ)
   03) 방출각·입사각   cos α = cos β = H / L            (코사인 방출 × 입사각 투영)
-  04) Ar 충돌 감쇠    S(L) = exp(−L / λ)               (충돌 없이 도달하는 성분만 셈)
-  05) 국소 기여       t_PQ = m·H² / (π·ρ₀·L⁴) · exp(−L / λ)
-  06) 타깃 전체 적분   F(r) = ∫₀ᵃ ∫₀²ᵖⁱ H² / L⁴ · exp(−L / λ) · q dφ dq
+  04) Ar 충돌 감쇠    S(L) = exp(−L / λ)               (충돌 없이 도달하는 비율)
+  05) 국소 기여       t_PQ = m / (π·ρ₀) · [ H²/L⁴ · S(L) + γ · H/(2L³) · (1 − S(L)) ]
+        직진 성분 H²/L⁴ · S          논문 Eq. (3) 그대로
+        산란 성분 γ · H/(2L³) · (1−S)  05-b) 이 프로젝트에서 넣은 확장 (γ = 0 이면 논문 식)
+  06) 타깃 전체 적분   F(r) = ∫₀ᵃ ∫₀²ᵖⁱ [ H²/L⁴ · S + γ · H/(2L³) · (1 − S) ] · q dφ dq
   07) 상대 두께       T_rel(r) = F(r) / F(0)
   08) 반경별 두께     T(r) = T_ref · T_rel(r)          (T_ref = 사용자가 넣는 중심 두께 [nm])
   09) 2D 웨이퍼맵     T(x, y) = T(√(x² + y²)),  x² + y² ≤ R_w²   (축대칭)
@@ -27,7 +29,13 @@ PVD 두께 분포 모델 (Streamlit 의존성 없음 → pvd_sim.py와 스크립
 메모
 - 절대 증착량은 계산하지 않는다. m/(π·ρ₀)는 위치와 무관해서 F(r)/F(0)에서 상쇄된다.
   T(r)은 "중심이 T_ref일 때의 환산 두께"이지 실측 절대 두께 예측이 아니다.
-- S(L)은 산란된 원자가 다시 웨이퍼에 도달하는 것까지 계산하는 기체 수송 모델이 아니다.
+- 05-b 산란 성분: Ar과 충돌한 원자(비율 1 − S)가 확산해서 웨이퍼에 닿는다고 보고, 한 점에서 나와 확산하다
+  흡수 평면에 닿는 분포 H/(2πL³)를 쓴다 (직진 코사인 성분 H²/(πL⁴)와 같은 정규화: 무한 평면 적분 = 1).
+  γ = 산란된 원자가 웨이퍼 쪽으로 도달하는 비율(0–1). 타깃·챔버 벽으로 되돌아가는 원자, 충돌 위치의 분포는
+  따로 계산하지 않는 단순화다 (기체 수송 시뮬레이션이 아님).
+  넣은 이유: 논문 조건(0.4 Pa, λ = 1.6 cm, H = 9 cm)에서는 S ≈ exp(−5.6) ≈ 0.4 %라 직진 성분만으로는
+  실측(Fig. 2(c, d))보다 분포가 훨씬 가파르다. calibrate_pvd.py 참고.
+- 보정값: γ = 1 (calibrate_pvd.py → pvd_calibrated.json, 논문 Fig. 2(c, d) 실측 36점). λ는 논문 값 유지.
 - 타깃 침식은 면 전체에서 균일하다고 본다 (마그네트론 레이스트랙 미반영).
 - 수치 적분: φ는 주기 함수라 등간격 합(주기 사다리꼴, 지수 수렴), q는 Gauss–Legendre.
   기본 분할(48 × 96)에서 H ≥ 2 cm이면 상대 오차 < 1e-10. H가 a·r에 비해 아주 작으면 n_q, n_phi를 늘린다.
@@ -49,6 +57,7 @@ DEFAULT_PARAMS = {
     "a": 5.0,          # 타깃 반경 [cm]
     "H": 10.0,         # 타깃–웨이퍼 거리 [cm]
     "lam": LAM_REF,    # 평균자유행로 [cm]
+    "gamma": 1.0,      # 산란 원자 도달 비율 (calibrate_pvd.py 보정값, 논문 식만 쓰려면 0)
     "Rw": RW_2INCH,    # 웨이퍼 반경 [cm]
     "T_ref": 200.0,    # 웨이퍼 중심 기준 두께 [nm]
 }
@@ -56,7 +65,8 @@ DEFAULT_PARAMS = {
 # 논문 Figure 2(a) 재현용 입력 (이론 시뮬레이션 조건)
 FIG2A = {"a_list": (3.0, 4.0, 5.0, 6.0, 7.0), "H": 10.0, "lam": LAM_REF}
 # 논문 Figure 2(c, d) 실제 증착 조건 — 이론 곡선(FIG2A)과 섞어 쓰지 않는다
-FIG2CD_EXPERIMENT = {"a_list": (2.5, 3.0), "H": 9.0}
+# T_mean, eta: 그림에 적힌 실측 평균 두께 [nm], 불균일도 [%]
+FIG2CD_EXPERIMENT = {"a_list": (2.5, 3.0), "H": 9.0, "T_mean": (135.95, 169.11), "eta": (4.23, 2.85)}
 
 N_Q, N_PHI = 48, 96    # 적분 분할 기본값 (q: Gauss–Legendre 노드 수, φ: 등간격 점 수)
 N_POINTS_PAPER = 18    # 논문 불균일도 측정 점 수 (직경 방향)
@@ -81,10 +91,19 @@ def survival(L, lam):
     return np.exp(-np.asarray(L, float) / lam)
 
 
-def kernel(r, q, phi, H, lam):
-    """05) 타깃 미소 면적의 국소 기여 (공통 계수 m/(π·ρ₀) 제외):  H²/L⁴ · exp(−L/λ)"""
+def kernel(r, q, phi, H, lam, gamma=0.0):
+    """05) 타깃 미소 면적의 국소 기여 (공통 계수 m/(π·ρ₀) 제외)
+
+    직진 성분  H²/L⁴ · S(L)                  (논문 Eq. (3), S = exp(−L/λ))
+    산란 성분  γ · H/(2·L³) · (1 − S(L))       (05-b, 이 프로젝트에서 넣은 확장)
+    gamma = 0 이면 논문 식 그대로다.
+    """
     L = path_length(r, q, phi, H)
-    return H * H / L**4 * survival(L, lam)
+    S = survival(L, lam)
+    k = H * H / L**4 * S
+    if gamma:
+        k = k + gamma * H / (2.0 * L**3) * (1.0 - S)
+    return k
 
 
 def mean_free_path(P_pa, lam_ref=LAM_REF, P_ref=P_REF):
@@ -107,13 +126,13 @@ def _quad_nodes(a, n_q, n_phi):
     return q, wq, phi, 2.0 * np.pi / n_phi
 
 
-def F(r, a, H, lam, n_q=N_Q, n_phi=N_PHI):
+def F(r, a, H, lam, gamma=0.0, n_q=N_Q, n_phi=N_PHI):
     """06) 분포 모양 함수 F(r; a, H, λ) = ∫₀ᵃ∫₀²ᵖⁱ H²/L⁴ · exp(−L/λ) · q dφ dq
 
     r: 스칼라 또는 배열 [cm] → 같은 모양으로 반환 (무차원)
     """
-    if a <= 0 or H <= 0 or lam <= 0:
-        raise ValueError("a, H, lam은 양수여야 합니다.")
+    if a <= 0 or H <= 0 or lam <= 0 or gamma < 0:
+        raise ValueError("a, H, lam은 양수, gamma는 0 이상이어야 합니다.")
     r_arr = np.asarray(r, float)
     flat = np.abs(r_arr).ravel()
     q, wq, phi, wphi = _quad_nodes(a, n_q, n_phi)
@@ -121,7 +140,7 @@ def F(r, a, H, lam, n_q=N_Q, n_phi=N_PHI):
     step = max(1, 2_000_000 // (n_q * n_phi))        # 메모리 상한용 청크
     for i in range(0, flat.size, step):
         rr = flat[i:i + step, None, None]
-        k = kernel(rr, q[None, :, None], phi[None, None, :], H, lam)   # (r, q, φ)
+        k = kernel(rr, q[None, :, None], phi[None, None, :], H, lam, gamma)   # (r, q, φ)
         out[i:i + step] = (k.sum(axis=2) * wphi) @ (wq * q)
     return out.reshape(r_arr.shape) if r_arr.ndim else float(out[0])
 

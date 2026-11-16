@@ -9,6 +9,9 @@ PVD 모델 검산 + 논문 Figure 2(a) 조건 계산 → pvd_fig2a.png, pvd_fig2
   2) r = 0, 유한 λ          F(0) = 2π·H²·∫_H^√(H²+a²) e^(−L/λ)/L³ dL   (1차원 적분)
   3) r > 0                  scipy.integrate.dblquad 로 식 06을 직접 적분
   4) 맵: 중심 = T_ref, 축대칭, 웨이퍼 밖 NaN
+  5) 산란 성분(γ > 0) 포함 식도 dblquad 와 비교
+
+여기서 계산하는 표·그림은 논문 식 그대로(γ = 0)다. 실측으로 보정한 γ 는 calibrate_pvd.py 참고.
 """
 import argparse
 from pathlib import Path
@@ -40,6 +43,14 @@ def check():
                         * np.exp(-np.sqrt(H * H + r * r + q * q - 2 * r * q * np.cos(phi)) / lam),
                         0, a, 0, 2 * np.pi, epsabs=0, epsrel=1e-11)[0]
                     worst = max(worst, abs(P.F(r, a, H, lam) / ref - 1))
+    # 5) 산란 성분 포함
+    for a, H, lam, g, r in ((2.5, 9.0, 1.6, 1.0, 2.54), (5.0, 10.0, 1.6, 0.3, 1.0), (7.0, 5.0, 5.0, 1.0, 5.0)):
+        def f(phi, q):
+            L = np.sqrt(H * H + r * r + q * q - 2 * r * q * np.cos(phi))
+            S = np.exp(-L / lam)
+            return (H * H / L**4 * S + g * H / (2 * L**3) * (1 - S)) * q
+        ref = integrate.dblquad(f, 0, a, 0, 2 * np.pi, epsabs=0, epsrel=1e-11)[0]
+        worst = max(worst, abs(P.F(r, a, H, lam, gamma=g) / ref - 1))
     print(f"적분 검산: 최대 상대 오차 {worst:.2e}")
     assert worst < 1e-8, worst
 
@@ -65,7 +76,7 @@ def table():
     for i, ri in enumerate(r):
         rows.append((f"{ri:.3f}",) + tuple(f"{c[i]:.5f}" for c in cols))
     (HERE / "pvd_fig2a.csv").write_text("\n".join(",".join(x) for x in rows) + "\n", encoding="utf-8")
-    print(f"\nFigure 2(a) 조건: H = {H:g} cm, λ = {lam:g} cm, 2-inch 웨이퍼 (R_w = {P.RW_2INCH} cm)")
+    print(f"\nFigure 2(a) 조건 · 논문 식(γ = 0): H = {H:g} cm, λ = {lam:g} cm, 2-inch 웨이퍼 (R_w = {P.RW_2INCH} cm)")
     print(f"{'a [cm]':>7} {'T_rel(R_w)':>11} {'η 직경18점 [%]':>15} {'η 면적가중 [%]':>15}")
     for a in P.FIG2A["a_list"]:
         s = P.summary(1.0, a, H, lam)

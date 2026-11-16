@@ -2,10 +2,14 @@
 PVD 시뮬레이터 페이지 (app.py에서 실행됨)
 
 평면 원형 타깃 마그네트론 스퍼터링 · 중심 기준 상대 두께 분포
+- 산란 원자 도달 비율 γ 기본값은 논문 Fig. 2(c, d) 실측으로 보정한 값 (calibrate_pvd.py → pvd_calibrated.json)
 - 모델 식은 pvd_model.py (Streamlit 의존성 없음)
 - st.set_page_config는 app.py에서 이미 호출하므로 여기서 다시 부르지 않는다.
 - 다른 페이지와 session_state 키가 겹치지 않도록 PVD 쪽 키는 "pvd_" 접두어를 쓴다.
 """
+import json
+from pathlib import Path
+
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
@@ -24,11 +28,28 @@ CTRL_DEFAULTS = {
     "pvd_a": float(D0["a"]),
     "pvd_H": float(D0["H"]),
     "pvd_lam": float(D0["lam"]),
+    "pvd_gamma": float(D0["gamma"]),
     "pvd_Tref": float(D0["T_ref"]),
     "pvd_wafer": list(WAFERS)[0],
 }
 # 논문 Figure 2(a) 이론 곡선 조건 (H = 10 cm, λ = 1.6 cm, 타깃 반경만 바꿈)
 PRESETS = [(f"a = {a:g} cm", {"pvd_a": float(a)}) for a in P.FIG2A["a_list"]]
+N_THEORY = len(PRESETS)
+
+# 논문 Figure 2(c, d) 실측 조건 (H = 9 cm) + 실측 18점
+HERE = Path(__file__).parent
+EXP = P.FIG2CD_EXPERIMENT
+try:
+    _csv = np.genfromtxt(HERE / "data" / "pvd_fig2cd_thickness.csv", delimiter=",", skip_header=1)
+    MEASURED = {N_THEORY: _csv[:, 1], N_THEORY + 1: _csv[:, 2]}
+except OSError:
+    MEASURED = {}
+try:
+    CAL = json.loads((HERE / "pvd_calibrated.json").read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    CAL = None
+for _a in EXP["a_list"]:
+    PRESETS.append((f"a = {_a * 10:g} mm", {"pvd_a": float(_a), "pvd_H": float(EXP["H"])}))
 
 
 def sig(v):
@@ -60,6 +81,10 @@ def apply_preset(i):
         ss[k] = v
     for k, v in PRESETS[i][1].items():
         ss[k] = v
+    if i in MEASURED:
+        # 중심 두께: 모델 18점이 실측 18점에 최소제곱으로 맞도록 (모델은 상대 분포만 계산)
+        m = P.nonuniformity_diameter(ss.pvd_a, ss.pvd_H, ss.pvd_lam, gamma=ss.pvd_gamma)[1]
+        ss.pvd_Tref = float(round((m @ MEASURED[i]) / (m @ m), 1))
     ss.pvd_preset = i
 
 
@@ -69,7 +94,7 @@ def clear_preset():
 
 st.title("PVD 웨이퍼 시뮬레이터")
 st.caption("평면 원형 타깃 마그네트론 스퍼터링 (d = 0) · 타깃 ∥ 웨이퍼 · "
-           "코사인 방출 + 거리 감소 + Ar 충돌 감쇠 → 중심 기준 상대 두께")
+           "코사인 방출 + 거리 감소 + Ar 충돌(직진 감쇠 + 산란 원자 도달) → 중심 기준 상대 두께")
 
 # ---------------------------------------------------------------------------
 # 사이드바 — 조건
@@ -87,6 +112,9 @@ with st.sidebar:
     st.slider("평균자유행로 λ [cm]", 0.3, 10.0, step=0.1, key="pvd_lam", on_change=clear_preset,
               help="스퍼터 원자가 Ar과 충돌하지 않고 가는 평균 거리. 논문: 0.4 Pa에서 1.6 cm")
     st.caption(f"λ ∝ 1/P 로 환산하면 Ar 압력 ≈ **{P.P_REF * P.LAM_REF / ss.pvd_lam:.2f} Pa**")
+    st.slider("산란 원자 도달 비율 γ", 0.0, 1.0, step=0.05, key="pvd_gamma", on_change=clear_preset,
+              help="Ar과 충돌한 원자가 확산해서 웨이퍼에 닿는 비율. 0이면 논문 식(직진 성분만), "
+                   "1이 논문 Fig. 2(c, d) 실측으로 보정한 값")
 
     st.divider()
     st.subheader("기준 두께")
@@ -105,32 +133,37 @@ with st.sidebar:
         cc1.number_input("최소 [nm]", min_value=0.0, step=1.0, format="%.1f", key="pvd_cmin")
         cc2.number_input("최대 [nm]", min_value=0.01, step=1.0, format="%.1f", key="pvd_cmax")
 
-pcols = st.columns([1.6] + [1.0] * len(PRESETS) + [1.4])
-pcols[0].markdown("<div style='padding-top:6px;opacity:.6;font-size:.8rem'>논문 Fig. 2(a) 조건</div>",
+pcols = st.columns([1.5] + [1.0] * N_THEORY + [1.7] + [1.0] * (len(PRESETS) - N_THEORY))
+pcols[0].markdown("<div style='padding-top:6px;opacity:.6;font-size:.8rem'>Fig. 2(a) 조건 (H = 10 cm)</div>",
                   unsafe_allow_html=True)
+pcols[N_THEORY + 1].markdown("<div style='padding-top:6px;opacity:.6;font-size:.8rem;text-align:right'>"
+                             "Fig. 2(c, d) 실측 (H = 9 cm)</div>", unsafe_allow_html=True)
 for i, (name, _) in enumerate(PRESETS):
-    pcols[i + 1].button(name, key=f"pvd_preset_{i}", on_click=apply_preset, args=(i,),
-                        type="primary" if ss.pvd_preset == i else "secondary", use_container_width=True)
+    pcols[i + 1 + (i >= N_THEORY)].button(name, key=f"pvd_preset_{i}", on_click=apply_preset, args=(i,),
+                                          type="primary" if ss.pvd_preset == i else "secondary",
+                                          use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # 계산
 # ---------------------------------------------------------------------------
-a, H, lam = float(ss.pvd_a), float(ss.pvd_H), float(ss.pvd_lam)
+a, H, lam, gamma = float(ss.pvd_a), float(ss.pvd_H), float(ss.pvd_lam), float(ss.pvd_gamma)
+measured = MEASURED.get(ss.pvd_preset)     # 실측 조건 프리셋일 때만 실측 18점을 같이 그림
 T_ref = float(ss.pvd_Tref)
 Rw = WAFERS[ss.pvd_wafer]
 
-s = P.summary(T_ref, a, H, lam, Rw=Rw)
-pos, pts_v, mean18, sd18, eta18 = P.nonuniformity_diameter(a, H, lam, Rw=Rw, T_ref=T_ref)
-r_line, t_line = P.radial_profile(a, H, lam, Rw=Rw, n=201, T_ref=1.0)
+s = P.summary(T_ref, a, H, lam, Rw=Rw, gamma=gamma)
+pos, pts_v, mean18, sd18, eta18 = P.nonuniformity_diameter(a, H, lam, Rw=Rw, T_ref=T_ref, gamma=gamma)
+r_line, t_line = P.radial_profile(a, H, lam, Rw=Rw, n=201, T_ref=1.0, gamma=gamma)
 
 # 감쇠 항이 분포에 주는 영향 (λ → ∞ 와 비교)
 edge_no_scatter = float(P.t_relative(Rw, a, H, np.inf))
+edge_paper = float(P.t_relative(Rw, a, H, lam))        # 논문 식 (γ = 0)
 
 k = st.columns(5)
 k[0].metric("중심 두께 (기준값)", f"{sig(s['T_center'])} nm")
 k[1].metric("가장자리 두께", f"{sig(s['T_edge'])} nm")
 k[2].metric("가장자리 / 중심", f"{s['edge_ratio']:.4f}",
-            help=f"Ar 감쇠가 없다면(λ → ∞) {edge_no_scatter:.4f}")
+            help=f"Ar 충돌이 없다면(λ → ∞) {edge_no_scatter:.4f} · 논문 식(γ = 0)이면 {edge_paper:.4f}")
 k[3].metric("불균일도 η (직경 18점)", f"{s['eta_18pt']:.2f} %",
             help="논문 Eq. (1): σ_T / 평균 × 100, 직경 방향 등간격 18점")
 k[4].metric("불균일도 η (면적 가중)", f"{s['eta_area']:.2f} %",
@@ -151,7 +184,7 @@ def wafer_figure():
     n = 201
     xs = np.linspace(-Rw, Rw, n)
     X, Y = np.meshgrid(xs, xs)
-    Z = P.thickness_map(X, Y, T_ref, a, H, lam, Rw=Rw)
+    Z = P.thickness_map(X, Y, T_ref, a, H, lam, Rw=Rw, gamma=gamma)
     custom = np.stack([np.hypot(X, Y), Z / T_ref], -1)
 
     fig = go.Figure()
@@ -186,7 +219,7 @@ def wafer_figure():
 def radial_figure():
     fig = go.Figure()
     for ai in P.FIG2A["a_list"]:
-        _, ti = P.radial_profile(ai, H, lam, Rw=Rw, n=101, T_ref=1.0)
+        _, ti = P.radial_profile(ai, H, lam, Rw=Rw, n=101, T_ref=1.0, gamma=gamma)
         fig.add_trace(go.Scatter(x=np.linspace(0, Rw, 101), y=ti, name=f"a = {ai:g} cm",
                                  line=dict(color=REF, width=1.1, dash="dot"), hovertemplate="%{y:.4f}"))
     fig.add_trace(go.Scatter(x=r_line, y=t_line, name=f"현재 (a = {a:g} cm)", line=dict(color=ACCENT, width=2.4),
@@ -194,6 +227,9 @@ def radial_figure():
     fig.add_trace(go.Scatter(x=np.abs(pos), y=pts_v / T_ref, mode="markers", name="직경 18점",
                              marker=dict(size=7, color="white", line=dict(color=ACCENT, width=1.5)),
                              hovertemplate="%{y:.4f}"))
+    if measured is not None:
+        fig.add_trace(go.Scatter(x=np.abs(pos), y=measured / T_ref, mode="markers", name="논문 실측 18점",
+                                 marker=dict(size=8, color="#5b63b7"), hovertemplate="%{y:.4f}"))
     fig.update_xaxes(title="웨이퍼 반경 r [cm]", range=[0, Rw])
     fig.update_yaxes(title="상대 두께 T(r) / T(0)", tickformat=".3f")
     fig.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
@@ -204,7 +240,7 @@ def radial_figure():
 def sweep_figure():
     """타깃 반경에 따른 불균일도 (현재 H, λ, 웨이퍼)"""
     aa = np.linspace(1.0, 12.0, 45)
-    eta = [P.nonuniformity_diameter(x, H, lam, Rw=Rw)[4] for x in aa]
+    eta = [P.nonuniformity_diameter(x, H, lam, Rw=Rw, gamma=gamma)[4] for x in aa]
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=aa, y=eta, line=dict(color=ACCENT, width=2), showlegend=False,
                              hovertemplate="a = %{x:.2f} cm · η = %{y:.2f} %<extra></extra>"))
@@ -238,9 +274,14 @@ with left:
 
 with right:
     with st.container(border=True):
-        st.markdown(f"##### 반경 프로파일 · H = {H:g} cm, λ = {lam:g} cm")
+        st.markdown(f"##### 반경 프로파일 · H = {H:g} cm, λ = {lam:g} cm, γ = {gamma:g}")
         st.plotly_chart(radial_figure(), use_container_width=True)
-        st.caption("점선: 같은 H, λ에서 타깃 반경 3–7 cm (논문 Fig. 2(a)의 타깃 반경 범위)")
+        st.caption("점선: 같은 H, λ, γ에서 타깃 반경 3–7 cm (논문 Fig. 2(a)의 타깃 반경 범위)")
+        if measured is not None:
+            m_mean, _, m_eta = P.nonuniformity(measured)
+            rmse = float(np.sqrt(np.mean((pts_v - measured) ** 2)) / m_mean * 100)
+            st.caption(f"논문 실측: 평균 {m_mean:.1f} nm, η {m_eta:.2f} % · 모델: 평균 {mean18:.1f} nm, η {eta18:.2f} % · "
+                       f"18점 RMSE {rmse:.2f} % (실측 평균 대비) · 중심 두께는 실측에 맞춘 값")
     with st.container(border=True):
         st.markdown("##### 타깃 반경에 따른 불균일도")
         st.plotly_chart(sweep_figure(), use_container_width=True)
@@ -248,7 +289,10 @@ with right:
 st.markdown(
     "<div class='model-box'>"
     "L = √(H² + r² + q² − 2rq·cos φ) &nbsp;→&nbsp; cos α = cos β = H/L &nbsp;→&nbsp; S(L) = exp(−L/λ)<br>"
-    "F(r) = ∫₀ᵃ∫₀²ᵖⁱ H²/L⁴ · exp(−L/λ) · q dφ dq &nbsp;→&nbsp; T(r) = T_ref · F(r)/F(0)"
+    "F(r) = ∫₀ᵃ∫₀²ᵖⁱ [H²/L⁴ · S + γ · H/(2L³) · (1 − S)] · q dφ dq &nbsp;→&nbsp; T(r) = T_ref · F(r)/F(0)"
     "</div>", unsafe_allow_html=True)
 st.caption("Z. Cheng et al., Cryst. Growth Des. 24, 339–346 (2024)의 Eq. (2)–(4), (7)–(9)에 평면 타깃(d = 0) 조건 적용 · "
-           "절대 증착량은 계산하지 않고, 중심 두께는 입력한 기준값 · 산란 후 재도달과 타깃 레이스트랙 침식은 반영하지 않음")
+           "산란 성분(γ)은 이 프로젝트에서 넣은 확장이고 γ = 1은 논문 Fig. 2(c, d) 실측 36점으로 보정한 값"
+           + (f" (18점 모양 RMSE {CAL['metrics']['before']['rmse_pct']:.1f} % → {CAL['metrics']['after']['rmse_pct']:.1f} %)"
+              if CAL else "")
+           + " · 절대 증착량은 계산하지 않고, 중심 두께는 입력한 기준값 · 타깃 레이스트랙 침식은 반영하지 않음")
