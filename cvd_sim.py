@@ -491,7 +491,7 @@ with right:
         st.caption("저온(오른쪽): 기울기 = −Eₐ/R, 위치와 무관하게 균일 · 고온(왼쪽): 확산 율속, Inlet 쪽이 두꺼움")
     if radial:
         with st.container(border=True):
-            st.markdown("##### 반경 프로파일 · 논문 Fig. 2로 최적화한 N(r)")
+            st.markdown("##### 반경 프로파일")
             st.plotly_chart(radial_figure(), use_container_width=True)
             rm = RADIAL["metrics"]
             st.caption(f"t(r) = t_중심 {sig(t_center)} nm × N(r) · 오차율 RMSE {rm['fit']['rmse_pct']:.3f} % "
