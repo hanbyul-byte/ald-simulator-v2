@@ -7,7 +7,7 @@
 - 공정 선택 화면: ALD / CVD / PVD 중 하나를 고름
 - ALD → ald_sim.py  (TDMA-Hf · Langmuir 포화 + 전구체 소모 모델, 논문 데이터 보정)
 - CVD → cvd_sim.py  (중심 두께: 경계층 물질 전달 + 아레니우스 표면 반응 · 반경 분포: 논문 보정 프로파일)
-- PVD → pvd_sim.py  (준비 중: 물리 모델·데이터 추가 예정)
+- PVD → pvd_sim.py  (평면 타깃 스퍼터링 · 코사인 방출 + 거리 감소 + Ar 충돌 감쇠 → 중심 기준 상대 두께)
 주소 뒤에 ?process=ald · ?process=cvd · ?process=pvd 를 붙이면 해당 시뮬레이터로 바로 열림
 """
 import runpy
@@ -42,7 +42,7 @@ st.title("박막 공정 시뮬레이터")
 CARDS = [
     dict(key="ald", name="ALD", ready=True),
     dict(key="cvd", name="CVD", ready=True),
-    dict(key="pvd", name="PVD", ready=False),
+    dict(key="pvd", name="PVD", ready=True),
 ]
 
 cols = st.columns(len(CARDS), gap="large")
