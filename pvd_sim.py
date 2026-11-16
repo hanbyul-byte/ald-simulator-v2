@@ -169,7 +169,13 @@ def wafer_figure():
         hovertemplate="Point %{customdata[0]:.0f} · x %{x:.2f} cm<br>"
                       "두께 <b>%{customdata[1]:.2f}</b> nm<extra></extra>",
         showlegend=False))
-    lim = Rw * 1.06
+    # 점마다 두께 값 표시 — 18점이 촘촘해서 위·아래로 번갈아 놓는다
+    fmt = "{:.1f}" if T_ref < 1000 else "{:.0f}"
+    for i, (px, v) in enumerate(zip(pos, pts_v)):
+        fig.add_annotation(x=px, y=0, text=fmt.format(v), showarrow=False, yshift=18 if i % 2 == 0 else -18,
+                           font=dict(family="ui-monospace, Menlo, monospace", size=11, color="#141820"),
+                           bgcolor="rgba(255,255,255,0.9)", borderpad=2)
+    lim = Rw * 1.08
     fig.update_xaxes(range=[-lim, lim], visible=False)
     fig.update_yaxes(range=[-lim, lim], visible=False, scaleanchor="x", scaleratio=1)
     fig.update_layout(height=560, margin=dict(l=10, r=10, t=10, b=10),
