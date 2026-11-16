@@ -1,11 +1,11 @@
 """화면 전환 도우미 (공정 선택 ↔ 각 시뮬레이터)"""
 import streamlit as st
 
-PROCESSES = ("ald", "cvd")
+PROCESSES = ("ald", "cvd", "pvd")
 
 
 def go(process=None):
-    """process: 'ald' | 'cvd' | None(공정 선택 화면)"""
+    """process: 'ald' | 'cvd' | 'pvd' | None(공정 선택 화면)"""
     st.session_state.process = process
     if process:
         st.query_params["process"] = process

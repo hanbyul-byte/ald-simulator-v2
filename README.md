@@ -1,10 +1,11 @@
-# 박막 공정 시뮬레이터 (ALD · CVD)
+# 박막 공정 시뮬레이터 (ALD · CVD · PVD)
 
-첫 화면에서 공정을 고르면 해당 시뮬레이터가 열린다. 주소 뒤에 `?process=ald` / `?process=cvd`를 붙이면 바로 열림.
+첫 화면에서 공정을 고르면 해당 시뮬레이터가 열린다. 주소 뒤에 `?process=ald` / `?process=cvd` / `?process=pvd`를 붙이면 바로 열림.
 
 - **ALD:** TDMA-Hf 전구체 · Cross-flow 반응기 · Langmuir 포화 + 흐름 방향 전구체 소모 모델
 - **CVD:** 회전 서셉터 · 중심 두께 = 평판 경계층 물질 전달 + 아레니우스 표면 반응(직렬 저항) + 전구체 고갈
   - 두께 맵: 웨이퍼 중심 두께는 위 물리 모델로, 반경 분포는 논문(APCVD, 300 mm, 회전 서셉터) Fig. 2로 최적화한 N(r)로 계산
+- **PVD:** 준비 중 (물리 모델·데이터 추가 예정)
 
 ```
 streamlit run app.py
@@ -14,13 +15,14 @@ streamlit run app.py
 
 | 파일 | 내용 |
 |---|---|
-| `app.py` | 시작 화면 (ALD / CVD 선택) |
+| `app.py` | 시작 화면 (ALD / CVD / PVD 선택) |
 | `ald_sim.py` | ALD 시뮬레이터 화면 |
 | `cvd_sim.py` | CVD 시뮬레이터 화면 (회전 서셉터 · 반경 프로파일) |
 | `cvd_model.py` | CVD 성장 모델 (화면과 `calibrate_cvd.py`가 같이 씀) |
 | `calibrate_cvd.py` | CVD 실측 데이터로 상수 피팅 → `cvd_calibrated.json`, `cvd_calibration.png` |
 | `cvd_radial.py` | CVD 반경 프로파일 모델 N(r) (논문 Habuka 반응식 + 웨이퍼 온도 분포 + 가장자리 TCS 저하) |
 | `fit_cvd_radial.py` | 논문 Fig. 2로 N(r) 최적화 → `cvd_radial.json`, `cvd_radial_fit.png` |
+| `pvd_sim.py` | PVD 시뮬레이터 화면 (준비 중: 물리 모델·데이터 추가 예정) |
 | `data/cvd_fig2_norm_dr.csv` | 논문 Fig. 2 디지타이즈 (실험 · 논문 COMSOL 정규화 증착률, 177점) |
 | `nav.py` | 화면 전환 도우미 |
 | `model.py` | 성장 모델 (화면과 보정 스크립트가 같이 씀) |

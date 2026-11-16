@@ -4,10 +4,11 @@
 실행:  streamlit run app.py
 
 화면 구성
-- 공정 선택 화면: ALD / CVD 중 하나를 고름
+- 공정 선택 화면: ALD / CVD / PVD 중 하나를 고름
 - ALD → ald_sim.py  (TDMA-Hf · Langmuir 포화 + 전구체 소모 모델, 논문 데이터 보정)
-- CVD → cvd_sim.py  (경계층 물질 전달 + 아레니우스 표면 반응 + 전구체 고갈 모델)
-주소 뒤에 ?process=ald 또는 ?process=cvd 를 붙이면 해당 시뮬레이터로 바로 열림
+- CVD → cvd_sim.py  (중심 두께: 경계층 물질 전달 + 아레니우스 표면 반응 · 반경 분포: 논문 보정 프로파일)
+- PVD → pvd_sim.py  (준비 중: 물리 모델·데이터 추가 예정)
+주소 뒤에 ?process=ald · ?process=cvd · ?process=pvd 를 붙이면 해당 시뮬레이터로 바로 열림
 """
 import runpy
 from pathlib import Path
@@ -17,7 +18,7 @@ import streamlit as st
 from nav import PROCESSES, go
 
 HERE = Path(__file__).parent
-PAGES = {"ald": HERE / "ald_sim.py", "cvd": HERE / "cvd_sim.py"}
+PAGES = {"ald": HERE / "ald_sim.py", "cvd": HERE / "cvd_sim.py", "pvd": HERE / "pvd_sim.py"}
 
 st.set_page_config(page_title="박막 공정 시뮬레이터", page_icon="🧪", layout="wide")
 
@@ -41,6 +42,7 @@ st.title("박막 공정 시뮬레이터")
 CARDS = [
     dict(key="ald", name="ALD", ready=True),
     dict(key="cvd", name="CVD", ready=True),
+    dict(key="pvd", name="PVD", ready=False),
 ]
 
 cols = st.columns(len(CARDS), gap="large")
