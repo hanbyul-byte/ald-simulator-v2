@@ -15,9 +15,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import cvd_model as M
+import cvd_radial as RAD
 from nav import back_button
 
 HERE = Path(__file__).parent
+RADIAL = RAD.load_params(HERE / "cvd_radial.json")   # fit_cvd_radial.py 결과 (논문 Fig. 2 반경 프로파일)
+RADIAL_DATA_PATH = HERE / "data" / "cvd_fig2_norm_dr.csv"
+MODE_RADIAL = "반경 프로파일 (회전 서셉터 · 논문 보정)"
+MODE_FLOW = "Cross-flow (흐름 방향 고갈)"
 CALIB_PATH = HERE / "cvd_calibrated.json"
 DATA_PATH = HERE / "data" / "cvd_data.csv"
 CALIB = json.loads(CALIB_PATH.read_text(encoding="utf-8")) if CALIB_PATH.exists() else None
@@ -219,6 +224,21 @@ with st.sidebar:
     st.button("공정 조건 초기화", on_click=apply_preset, args=(0,))
 
     st.divider()
+    st.subheader("두께 분포 모델")
+    modes = [MODE_RADIAL, MODE_FLOW] if RADIAL else [MODE_FLOW]
+    ss.setdefault("cvd_mode", modes[0])
+    if ss.cvd_mode not in modes:
+        ss.cvd_mode = modes[0]
+    st.radio("두께 분포 모델", modes, key="cvd_mode", label_visibility="collapsed",
+             help="반경 프로파일: 웨이퍼 중심 두께는 위 물리 모델로 계산하고, 반경 방향 분포는 논문 Fig. 2 "
+                  "(Epi 300 Centura, 300 mm, 32 rpm 회전)로 최적화한 N(r)을 곱함. "
+                  "Cross-flow: 회전 없이 Inlet 거리에 따른 경계층·고갈 모델을 웨이퍼 전체에 적용")
+    if RADIAL and ss.cvd_mode == MODE_RADIAL:
+        rm = RADIAL["metrics"]
+        st.caption(f"t(r) = t_중심 · N(r) · N(r) 오차 RMSE {rm['fit']['rmse_pct']:.3f} % "
+                   f"(교차검증 {rm['block_cv']['rmse_pct']:.3f} %) · 반경은 웨이퍼 반경으로 정규화해서 옮김")
+
+    st.divider()
     st.subheader("두께 맵 컬러 범위")
     st.checkbox("자동 (현재 웨이퍼 min–max)", value=True, key="cvd_cauto")
     if not ss.cvd_cauto:
@@ -252,7 +272,15 @@ u = float(ss.cvd_u)
 t_min = float(ss.cvd_t)
 
 
+radial = bool(RADIAL) and ss.cvd_mode == MODE_RADIAL
+RP = RADIAL["params"] if RADIAL else None
+# 웨이퍼 중심 두께 = 사용자 물리 모델 (cvd_model)로 웨이퍼 중심 좌표에서 계산
+t_center = float(M.thickness(T, P_tot, p_prec, u, t_min, M.WC[0], M.WC[1], c))
+
+
 def thk_xy(x, y):
+    if radial:
+        return RAD.thickness_map(t_center, x, y, M.WC, M.WR, RP)
     return M.thickness(T, P_tot, p_prec, u, t_min, x, y, c)
 
 
@@ -289,7 +317,13 @@ k[1].metric("불균일도 1σ", f"{nu_s:.1f} %")
 k[2].metric("불균일도 (max−min)/2·mean", f"±{nu_r:.1f} %")
 k[3].metric("평균 증착률", f"{sig(mean / t_min)} nm/min")
 k[4].metric("k_s / h_g (웨이퍼 중심)", f"{reg:.3g}")
-k[5].metric("전구체 잔류 (먼 끝)", f"{cr_far * 100:.1f} %")
+if radial:
+    r_full = np.linspace(0, RAD.R_DATA_MAX_MM, 600)
+    nu_full = RAD.uniformity(r_full, RAD.norm_dr(r_full, RP))[1]
+    k[5].metric("중심 두께 (물리 모델)", f"{sig(t_center)} nm",
+                help=f"웨이퍼 전체(면적 가중) 불균일도 1σ = {nu_full:.3f} %")
+else:
+    k[5].metric("전구체 잔류 (먼 끝)", f"{cr_far * 100:.1f} %")
 
 if delta_far > c["H"]:
     st.warning(f"웨이퍼 먼 끝에서 경계층 δ = {delta_far:.2f} cm가 통로 높이 H = {c['H']:.2f} cm보다 두꺼워요. "
@@ -313,15 +347,24 @@ def wafer_figure():
     inside = np.hypot(X - M.WC[0], Y - M.WC[1]) <= M.WR
     D = np.hypot(X, Y)
     Z = np.where(inside, thk_xy(X, Y), np.nan)
-    custom = np.stack([D, M.c_ratio(D, T, P_tot, u, c), M.regime(D, T, P_tot, u, c), M.delta(D, T, P_tot, u, c)], -1)
+    if radial:
+        Rmm = RAD.r_paper(X, Y, M.WC, M.WR, RP)
+        custom = np.stack([Rmm, RAD.norm_dr(Rmm, RP), RAD.delta_T(Rmm, RP), RAD.phi_edge(Rmm, RP)], -1)
+        hover = ("x %{x:.2f}, y %{y:.2f} cm · 논문 반경 %{customdata[0]:.1f} mm<br>"
+                 "두께 <b>%{z:.3f}</b> nm · N(r) <b>%{customdata[1]:.5f}</b><br>"
+                 "ΔT %{customdata[2]:+.2f} K · φ(TCS) %{customdata[3]:.3f}<extra></extra>")
+    else:
+        custom = np.stack([D, M.c_ratio(D, T, P_tot, u, c), M.regime(D, T, P_tot, u, c),
+                           M.delta(D, T, P_tot, u, c)], -1)
+        hover = ("x %{x:.2f}, y %{y:.2f} cm · Inlet %{customdata[0]:.2f} cm<br>"
+                 "두께 <b>%{z:.2f}</b> nm<br>C/C₀ <b>%{customdata[1]:.3f}</b> · "
+                 "k_s/h_g %{customdata[2]:.3g} · δ %{customdata[3]:.2f} cm<extra></extra>")
 
     fig = go.Figure()
     fig.add_trace(go.Heatmap(
         x=xs, y=ys, z=Z, customdata=custom, colorscale=COLORSCALE, zmin=c_lo, zmax=c_hi,
         colorbar=dict(title="두께 [nm]", thickness=12, len=0.6),
-        hovertemplate=("x %{x:.2f}, y %{y:.2f} cm · Inlet %{customdata[0]:.2f} cm<br>"
-                       "두께 <b>%{z:.2f}</b> nm<br>C/C₀ <b>%{customdata[1]:.3f}</b> · "
-                       "k_s/h_g %{customdata[2]:.3g} · δ %{customdata[3]:.2f} cm<extra></extra>"),
+        hovertemplate=hover,
     ))
     fig.add_shape(type="circle", x0=M.WC[0] - M.WR, y0=M.WC[1] - M.WR, x1=M.WC[0] + M.WR, y1=M.WC[1] + M.WR,
                   line=dict(color="#4a525e", width=1.5))
@@ -394,6 +437,30 @@ def profile_figure():
     return fig
 
 
+def radial_figure():
+    """N(r) (모델 · 실험 · 논문 COMSOL) + 추정 온도 편차 ΔT(r) (오른쪽 축)"""
+    rr = np.linspace(0, RAD.R_DATA_MAX_MM, 600)
+    fig = go.Figure()
+    if RADIAL_DATA_PATH.exists():
+        import pandas as pd
+        dd = pd.read_csv(RADIAL_DATA_PATH)
+        fig.add_trace(go.Scatter(x=dd.r_mm, y=dd.norm_dr_exp, mode="markers", name="실험 (Fig. 2)",
+                                 marker=dict(size=4, color="#1f2328"), hovertemplate="%{y:.5f}"))
+        ms = dd.norm_dr_sim_paper.notna()
+        fig.add_trace(go.Scatter(x=dd.r_mm[ms], y=dd.norm_dr_sim_paper[ms], mode="markers", name="논문 COMSOL",
+                                 marker=dict(size=3, color=S2, opacity=0.6), hovertemplate="%{y:.5f}"))
+    fig.add_trace(go.Scatter(x=rr, y=RAD.norm_dr(rr, RP), name="최적화 모델 N(r)", line=dict(color=ACCENT, width=2.2),
+                             hovertemplate="%{y:.5f}"))
+    fig.add_trace(go.Scatter(x=rr, y=RAD.delta_T(rr, RP), name="ΔT(r) [K] (오른쪽 축)", yaxis="y2",
+                             line=dict(color=REF, width=1.4, dash="dot"), hovertemplate="%{y:+.2f} K"))
+    fig.update_xaxes(title="논문 웨이퍼 반경 r [mm] (300 mm 웨이퍼, 앱 웨이퍼 반경으로 정규화)", range=[0, 150])
+    fig.update_yaxes(title="정규화 증착률 N(r)", tickformat=".3f")
+    fig.update_layout(yaxis2=dict(overlaying="y", side="right", title="ΔT [K]", showgrid=False),
+                      height=340, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
+                      legend=dict(orientation="h", y=1.2, x=0, font=dict(size=11)))
+    return fig
+
+
 # ---------------------------------------------------------------------------
 # 레이아웃
 # ---------------------------------------------------------------------------
@@ -422,8 +489,18 @@ with right:
         st.markdown(f"##### 아레니우스 플롯 · P = {sig(P_tot)} Torr, u = {u:g} cm/s")
         st.plotly_chart(arrhenius_figure(), use_container_width=True)
         st.caption("저온(오른쪽): 기울기 = −Eₐ/R, 위치와 무관하게 균일 · 고온(왼쪽): 확산 율속, Inlet 쪽이 두꺼움")
+    if radial:
+        with st.container(border=True):
+            st.markdown("##### 반경 프로파일 · 논문 Fig. 2로 최적화한 N(r)")
+            st.plotly_chart(radial_figure(), use_container_width=True)
+            rm = RADIAL["metrics"]
+            st.caption(f"t(r) = t_중심 {sig(t_center)} nm × N(r) · 오차율 RMSE {rm['fit']['rmse_pct']:.3f} % "
+                       f"(최대 {rm['fit']['max_abs_pct']:.2f} %, 블록 교차검증 {rm['block_cv']['rmse_pct']:.3f} %) · "
+                       f"논문 COMSOL {rm['paper_comsol']['rmse_pct']:.3f} % · "
+                       f"ΔT(r): 램프 가열 불균일, φ(r): 가장자리 TCS 저하 (λ = {RP['lam_edge']:.2f} mm)")
     with st.container(border=True):
-        st.markdown(f"##### 흐름 방향 프로파일 · {ss.cvd_T_C} °C")
+        st.markdown(f"##### 흐름 방향 프로파일 · {ss.cvd_T_C} °C"
+                    + (" (참고: 중심 두께 계산에 쓰는 cross-flow 물리 모델)" if radial else ""))
         st.plotly_chart(profile_figure(), use_container_width=True)
         st.caption(f"k_s = {sig(float(M.k_s(T, c)))} cm/s · h_g(중심) = {sig(float(M.h_g(d_center, T, P_tot, u, c)))} cm/s · "
                    f"ν = {sig(nu_gas)}, D_g = {sig(D_gas)} cm²/s · δ(먼 끝) = {delta_far:.2f} cm · "
