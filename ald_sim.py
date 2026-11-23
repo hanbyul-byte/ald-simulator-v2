@@ -166,7 +166,11 @@ if ss.stage == "setup":
         # 검증
         vals, errors = {}, []
         for c in CONSTS:
-            s = raw[c["id"]].strip().replace(",", "")
+            s = raw[c["id"]].strip()
+            unit = f" {c['unit']}" if c["unit"] else ""
+            if "," in s:
+                errors.append(f"**{c['label']}**: 쉼표 없이 입력하세요. 소수점은 점(.)으로 써요. 예: 0.5, 1000")
+                continue
             try:
                 v = float(s)
                 if not math.isfinite(v):
@@ -174,11 +178,12 @@ if ss.stage == "setup":
             except ValueError:
                 errors.append(f"**{c['label']}**: 숫자를 입력하세요. 예: 0.001 또는 1e-3")
                 continue
-            if v < c["min"] or v > c["max"]:
-                errors.append(f"**{c['label']}**: {c['min']} 이상 {c['max']} 이하로 입력하세요.")
+            if not (c["min"] <= v <= c["max"]):
+                errors.append(f"**{c['label']}**: {c['min']:g} ~ {c['max']:g}{unit} 범위로 입력하세요.")
                 continue
             vals[c["id"]] = v
 
+        
         # 파생값
         if "r" in vals:
             g0, n0 = gpc_max0(vals["r"])
