@@ -153,6 +153,7 @@ def invert_temperature(norm_dr_obs, T_c=PAPER_COND["T_c"], w_TCS=PAPER_COND["w_T
 R_DATA_MAX_MM = 149.0   # 실측(Fig. 2) 마지막 점. 그 바깥(엣지 익스클루전)은 외삽이라 이 값으로 자름
 
 
+
 def r_paper(x, y, wc, wr_cm, p):
     """앱 웨이퍼 좌표 (x, y) [cm] → 논문 웨이퍼 반경 [mm] (반경을 웨이퍼 반경으로 정규화해서 옮김)"""
     rho = np.hypot(np.asarray(x, float) - wc[0], np.asarray(y, float) - wc[1]) / wr_cm
