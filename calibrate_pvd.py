@@ -63,6 +63,7 @@ def params(names, v):
     p = {"lam": P.LAM_REF, "gamma": 0.0}
     p.update({n: 10.0 ** x for n, x in zip(names, v)})
     return p
+    
 
 
 def shape(a, p, H=H_EXP, r_max=None):
