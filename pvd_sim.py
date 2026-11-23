@@ -16,6 +16,7 @@ import streamlit as st
 
 import pvd_model as P
 from nav import back_button
+from wafer_zoom import HINT as ZOOM_HINT, wafer_chart
 
 ACCENT = "#0d7f74"
 REF = "#868d98"
@@ -259,9 +260,9 @@ left, right = st.columns([1.05, 1], gap="medium")
 with left:
     with st.container(border=True):
         st.markdown("##### 두께 맵 · 직경 18점")
-        st.plotly_chart(wafer_figure(), use_container_width=True)
+        wafer_chart(wafer_figure())
         st.caption(f"두께 [nm] · 컬러 범위 {sig(max(c_lo, 0))} ~ {sig(c_hi)} nm · "
-                   "축대칭 이론 환산맵 (실제 2D 측정 웨이퍼맵이 아님)")
+                   f"축대칭 이론 환산맵 (실제 2D 측정 웨이퍼맵이 아님) · 🔍 {ZOOM_HINT}")
         with st.expander("직경 18점 값 표"):
             st.dataframe({
                 "Point": list(range(1, len(pos) + 1)),

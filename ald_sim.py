@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from nav import back_button
+from wafer_zoom import HINT as ZOOM_HINT, wafer_chart
 from model import PTS, WC, WR, f_T, gpc, gpc_max0, p_local, p_vap, stick, thickness
 
 HERE = Path(__file__).parent
@@ -435,9 +436,9 @@ with left:
             h2.warning(f"부분 포화 · 최소 θ {th_min:.2f}")
         else:
             h2.error(f"미포화 · 최소 θ {th_min:.2f}")
-        st.plotly_chart(wafer_figure(), use_container_width=True)
+        wafer_chart(wafer_figure())
         st.caption(f"두께 [nm] · 컬러 범위 {c_lo:.2f} ~ {c_hi:.2f} nm 고정 "
-                   f"(참고: 현재 조건의 완전 포화 두께 {t_sat:.2f} nm)")
+                   f"(참고: 현재 조건의 완전 포화 두께 {t_sat:.2f} nm) · 🔍 {ZOOM_HINT}")
 
         with st.expander("9-Point 측정값 표"):
             st.dataframe(

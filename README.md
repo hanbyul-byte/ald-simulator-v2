@@ -31,6 +31,7 @@ streamlit run app.py
 | `data/pvd_fig2a_theory.csv`, `data/pvd_fig2b_eta_theory.csv` | 논문 Fig. 2(a, b) 이론 곡선·불균일도 디지타이즈 (비교용) |
 | `data/cvd_fig2_norm_dr.csv` | 논문 Fig. 2 디지타이즈 (실험 · 논문 COMSOL 정규화 증착률, 177점) |
 | `nav.py` | 화면 전환 도우미 |
+| `wafer_zoom.py` | 웨이퍼 두께 맵 표시 (ALD · CVD · PVD 공통) — 맵을 클릭하면 Streamlit 전체화면으로 확대, Esc로 닫기 |
 | `model.py` | 성장 모델 (화면과 보정 스크립트가 같이 씀) |
 | `inverse.py` | 역설계: 목표 사양 → 공정 조건 추천 (ALD 화면 위쪽 🎯 역설계 버튼 → 팝업에서 조건 입력 → 결과) |
 | `calibrate.py` | 실측 데이터로 상수 피팅 → `calibrated.json`, `calibration.png` |
