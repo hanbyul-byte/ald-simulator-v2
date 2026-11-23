@@ -138,6 +138,7 @@ def F(r, a, H, lam, gamma=0.0, n_q=N_Q, n_phi=N_PHI):
     q, wq, phi, wphi = _quad_nodes(a, n_q, n_phi)
     out = np.empty(flat.shape)
     step = max(1, 2_000_000 // (n_q * n_phi))        # 메모리 상한용 청크
+  
     for i in range(0, flat.size, step):
         rr = flat[i:i + step, None, None]
         k = kernel(rr, q[None, :, None], phi[None, None, :], H, lam, gamma)   # (r, q, φ)
