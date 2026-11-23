@@ -47,7 +47,7 @@ streamlit run app.py
 - 전구체 온도 → 분압: `P0 = P_ref · exp(−ΔH_vap/R · (1/T_p − 1/348.15 K))`
 - (선택) 장비 패턴: 저차 Zernike 곱셈 보정 `1 + a·Y + b·X + c·(X²+Y²)`
 
-## 역설계 (inverse.py)
+## 역설계 (inverse.py)(ALD만 구현)
 
 목표 평균 두께 ± 허용 오차, 최대 불균일도 1σ, 최소 포화도를 넣으면 공정 조건을 추천한다.
 
