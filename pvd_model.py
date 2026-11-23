@@ -205,7 +205,7 @@ def nonuniformity(T):
 
 
 def nonuniformity_diameter(a, H, lam, Rw=RW_2INCH, n=N_POINTS_PAPER, r_max=None, T_ref=1.0, **kw):
-    """직경 방향 n점(기본 18점)에서의 (위치 [cm], 두께, T̄, σ_T, η[%]) — 논문과 같은 방식의 비교용"""
+    """직경 방향 n점(기본 18점)에서의 (위치 [cm], 두께, T̄, σ_T, η[%]) — 논문과 같은 방식"""
     pos = diameter_points(Rw, n, r_max)
     T = thickness(np.abs(pos), T_ref, a, H, lam, **kw)
     return (pos, T) + nonuniformity(T)
