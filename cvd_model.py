@@ -35,7 +35,6 @@ R_CM3_TORR = 62363.6   # cm³·Torr/(mol·K)  → C [mol/cm³] = p[Torr] / (R·T
 T0 = 300.0             # 기체 물성 기준 온도 [K]
 P_ATM_TORR = 760.0
 
-
 # 기본 상수 (보정 전 초깃값 — 실측 데이터로 calibrate_cvd.py에서 피팅)
 DEFAULT_CONSTS = {
     # 표면 반응
@@ -53,7 +52,6 @@ DEFAULT_CONSTS = {
     "M": 210.49,        # 몰 질량 [g/mol]  (HfO₂)
     "rho": 9.68,        # 밀도 [g/cm³]     (HfO₂)
 }
-
 
 # 공정 조건 기본값
 DEFAULT_PROCESS = {
